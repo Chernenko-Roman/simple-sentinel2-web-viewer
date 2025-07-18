@@ -62,8 +62,22 @@ class CustomGridLayer extends L.GridLayer {
       const visualBand = stac_item.assets.visual.href;
       const tileId = stac_item.id;
 
+      const epsgCode = stac_item.properties['proj:epsg'];
+      const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
+
+      const coordsTopLeftUtm = wgs84ToUTM.forward([coordsTopLeft.lng, coordsTopLeft.lat])
+      const coordsBottomRightUtm = wgs84ToUTM.forward([coordsBottomRight.lng, coordsBottomRight.lat])
+
+      const resX = Math.abs(coordsTopLeftUtm[0] - coordsBottomRightUtm[0])/tileSize.x;
+      const resY = Math.abs(coordsTopLeftUtm[1] - coordsBottomRightUtm[1])/tileSize.y;
+      const res = Math.min(resX, resY);
+
       const tiff = await fromUrl(visualBand);
-      const tileRGB = await tiff.readRasters({ window: [0, 0, 256, 256] });
+      const tileRGB = await tiff.readRasters({ 
+        bbox: [coordsTopLeftUtm[0], coordsTopLeftUtm[1], coordsBottomRightUtm[0], coordsBottomRightUtm[1]],
+        resX: resX,
+        resY: resY
+       });
 
       const imageData = new ImageData(tileRGB.width, tileRGB.height);
       const data = imageData.data; // RGBA format
@@ -76,7 +90,8 @@ class CustomGridLayer extends L.GridLayer {
       }
 
       const ctx = tile.getContext('2d');
-      ctx.putImageData(imageData, 0, 0);
+      const imageBitmap = await createImageBitmap(imageData);
+      ctx.drawImage(imageBitmap, 0, 0, tileSize.x, tileSize.y);
       
       console.log(`done ${coords.x} ${coords.y} ${coords.z}`)
       done(error, tile);
