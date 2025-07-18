@@ -51,11 +51,6 @@ class CustomGridLayer extends L.GridLayer {
     const coordsTopLeft = map.unproject([coords.x * tileSize.x, coords.y * tileSize.y], coords.z);
     const coordsBottomRight = map.unproject([(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y], coords.z);
 
-    // tile.style.width = tileSize.x + "px";
-    // tile.style.height = tileSize.y + "px";
-    // tile.style.background = "#ffffff00";
-    // tile.classList.add("tile-text");
-
     (async () => {
       const stac_item = await fetchLatestS2(latlng.lat, latlng.lng);
 
@@ -102,6 +97,5 @@ class CustomGridLayer extends L.GridLayer {
 }
 
 
-// Add the custom layer
 const myGrid = new CustomGridLayer();
 myGrid.addTo(map);
