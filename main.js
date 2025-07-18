@@ -39,18 +39,22 @@ async function fetchLatestS2(lat, lon) {
 class CustomGridLayer extends L.GridLayer {
   createTile(coords, done) {
     var error;
-    const tile = document.createElement("div");
     const tileSize = this.getTileSize();
+
+    const tile = document.createElement("canvas");
+    tile.width = tileSize.x
+    tile.height = tileSize.y
+
     const pixel = [coords.x * tileSize.x, coords.y * tileSize.y];
     const latlng = map.unproject(pixel, coords.z);
 
     const coordsTopLeft = map.unproject([coords.x * tileSize.x, coords.y * tileSize.y], coords.z);
     const coordsBottomRight = map.unproject([(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y], coords.z);
 
-    tile.style.width = tileSize.x + "px";
-    tile.style.height = tileSize.y + "px";
-    tile.style.background = "#ffffff00";
-    tile.classList.add("tile-text");
+    // tile.style.width = tileSize.x + "px";
+    // tile.style.height = tileSize.y + "px";
+    // tile.style.background = "#ffffff00";
+    // tile.classList.add("tile-text");
 
     (async () => {
       const stac_item = await fetchLatestS2(latlng.lat, latlng.lng);
@@ -59,18 +63,22 @@ class CustomGridLayer extends L.GridLayer {
       const tileId = stac_item.id;
 
       const tiff = await fromUrl(visualBand);
+      const tileRGB = await tiff.readRasters({ window: [0, 0, 256, 256] });
 
-      tile.innerHTML = `
-        <div style="font: 12px sans-serif; padding: 4px;">
-        x: ${coords.x}<br/>
-        y: ${coords.y}<br/>
-        z: ${coords.z}<br/>
-        lat: ${latlng.lat.toFixed(4)}<br/>
-        lon: ${latlng.lng.toFixed(4)}<br/>
-        tile: ${tileId}<br/>
-        file: ${visualBand}
-        </div>
-    `;
+      const imageData = new ImageData(tileRGB.width, tileRGB.height);
+      const data = imageData.data; // RGBA format
+
+      for (let i = 0; i < tileRGB.width * tileRGB.height; i++) {
+        data[i * 4 + 0] = tileRGB[0][i];   // R
+        data[i * 4 + 1] = tileRGB[1][i]; // G
+        data[i * 4 + 2] = tileRGB[2][i];  // B
+        data[i * 4 + 3] = 255;      // A
+      }
+
+      const ctx = tile.getContext('2d');
+      ctx.putImageData(imageData, 0, 0);
+      
+      console.log(`done ${coords.x} ${coords.y} ${coords.z}`)
       done(error, tile);
     })();
 
