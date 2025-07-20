@@ -32,7 +32,7 @@ class CustomGridLayer extends L.GridLayer {
     );
 
     (async () => {
-      const stac_item = await this.fetchLatestS2(latlng.lat, latlng.lng);
+      const stac_item = await this.fetchLatestS2(coordsTopLeft, coordsBottomRight);
 
       const visualBand = stac_item.assets.visual.href;
       const tileId = stac_item.id;
@@ -81,26 +81,57 @@ class CustomGridLayer extends L.GridLayer {
       const imageBitmap = await createImageBitmap(imageData);
       ctx.drawImage(imageBitmap, 0, 0, tileSize.x, tileSize.y);
 
-      console.log(`done ${coords.x} ${coords.y} ${coords.z}`);
+      // ctx.strokeStyle = "white";
+      // ctx.lineWidth = 1;
+      // ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
+
       done(error, tile);
     })();
 
     return tile;
   }
 
-  async fetchLatestS2(lat, lon) {
+  async fetchLatestS2(topLeft, bottomRight) {
+    const stacItems = await this.fetchLatestS2StacItems(topLeft, bottomRight);
+
+    const bbox = [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat];
+    const bboxPolygon = turf.bboxPolygon(bbox);
+    const bboxArea = turf.area(bboxPolygon);
+
+    let tilesIndexes = [];
+
+    for (let i=0;i<stacItems.length;i++) {
+      const intersectionPolygon = turf.intersect(turf.featureCollection([bboxPolygon, turf.polygon(stacItems[i].geometry.coordinates)]));
+      const intersectionRatio = turf.area(intersectionPolygon)/bboxArea;
+
+      tilesIndexes.push({
+        id: stacItems[i].id,
+        idx: i,
+        intersectRatio: intersectionRatio,
+        datetime: stacItems[i].properties.datetime,
+        stacitem: stacItems[i],
+      })
+    }
+
+    tilesIndexes.sort((a, b) => {
+      if (a.intersectRatio != b.intersectRatio)
+        return b.intersectRatio - a.intersectRatio;
+      return b.datetime - a.datetime
+    })
+
+    return tilesIndexes?.[0].stacitem || null;
+  }
+
+  async fetchLatestS2StacItems(topLeft, bottomRight) {
     const body = {
       collections: ["sentinel-2-l2a"],
-      intersects: {
-        type: "Point",
-        coordinates: [lon, lat],
-      },
+      bbox: [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat],
       query: {
         "eo:cloud_cover": {
           lt: 10, // Less than 10% cloud cover
         },
       },
-      limit: 1,
+      limit: 10,
       sortby: "-properties.datetime",
     };
 
@@ -116,7 +147,7 @@ class CustomGridLayer extends L.GridLayer {
     if (!res.ok) throw new Error("STAC query failed: " + res.status);
     const data = await res.json();
 
-    return data.features?.[0] || null;
+    return data.features;
   }
 
   async openGeoTiffFile(geoTiffUrl) {
