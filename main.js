@@ -19,9 +19,6 @@ class CustomGridLayer extends L.GridLayer {
     tile.width = tileSize.x;
     tile.height = tileSize.y;
 
-    const pixel = [coords.x * tileSize.x, coords.y * tileSize.y];
-    const latlng = map.unproject(pixel, coords.z);
-
     const coordsTopLeft = map.unproject(
       [coords.x * tileSize.x, coords.y * tileSize.y],
       coords.z
@@ -30,6 +27,14 @@ class CustomGridLayer extends L.GridLayer {
       [(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y],
       coords.z
     );
+
+    const cellCoords = [
+      [coordsTopLeft.lng, coordsTopLeft.lat],
+      [coordsBottomRight.lng, coordsTopLeft.lat],
+      [coordsBottomRight.lng, coordsBottomRight.lat],
+      [coordsTopLeft.lng, coordsBottomRight.lat],
+    ];
+    
 
     (async () => {
       const stac_item = await this.fetchLatestS2(coordsTopLeft, coordsBottomRight);
@@ -40,29 +45,14 @@ class CustomGridLayer extends L.GridLayer {
       const epsgCode = stac_item.properties["proj:epsg"];
       const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
 
-      const coordsTopLeftUtm = wgs84ToUTM.forward([
-        coordsTopLeft.lng,
-        coordsTopLeft.lat,
-      ]);
-      const coordsBottomRightUtm = wgs84ToUTM.forward([
-        coordsBottomRight.lng,
-        coordsBottomRight.lat,
-      ]);
+      const cellCoordsUtm = cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
 
-      const resX =
-        Math.abs(coordsTopLeftUtm[0] - coordsBottomRightUtm[0]) / tileSize.x;
-      const resY =
-        Math.abs(coordsTopLeftUtm[1] - coordsBottomRightUtm[1]) / tileSize.y;
-      const res = Math.min(resX, resY);
-
+      const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
+      const resX = Math.abs(bbox[2] - bbox[0]) / tileSize.x;
+      const resY = Math.abs(bbox[3] - bbox[1]) / tileSize.y;
       const tiff = await this.openGeoTiffFile(visualBand);
       const tileRGB = await tiff.readRasters({
-        bbox: [
-          coordsTopLeftUtm[0],
-          coordsTopLeftUtm[1],
-          coordsBottomRightUtm[0],
-          coordsBottomRightUtm[1],
-        ],
+        bbox: bbox,
         resX: resX,
         resY: resY,
       });
