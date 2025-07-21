@@ -1,38 +1,65 @@
 const { fromUrl, fromUrls, fromArrayBuffer, fromBlob } = GeoTIFF;
 
 class STACCatalog {
+  #stacCache = new Map();
+
   constructor() {
   }
 
   async fetchLatestS2(topLeft, bottomRight) {
+    let [stacItem, bboxIntersectionRato] = this.findBestItem(topLeft, bottomRight);
+
+    if (bboxIntersectionRato < 1 - 1e-6)
+      await this.updateCachedItems(topLeft, bottomRight);
+      [stacItem, bboxIntersectionRato] = this.findBestItem(topLeft, bottomRight);
+
+    return stacItem
+  }
+
+  async updateCachedItems(topLeft, bottomRight) {
     const stacItems = await this.fetchLatestS2StacItems(topLeft, bottomRight);
+    
+    for (let i = 0; i < stacItems.length; i++)
+    {
+      const id = stacItems[i].id;
+      if (!this.#stacCache.has(id))
+        this.#stacCache.set(id, stacItems[i]);
+    }
+  }
+
+  findBestItem(topLeft, bottomRight) {
+    if (this.#stacCache.size == 0)
+      return [null, 0];
 
     const bbox = [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat];
     const bboxPolygon = turf.bboxPolygon(bbox);
     const bboxArea = turf.area(bboxPolygon);
-
     let tilesIndexes = [];
 
-    for (let i=0;i<stacItems.length;i++) {
-      const intersectionPolygon = turf.intersect(turf.featureCollection([bboxPolygon, turf.polygon(stacItems[i].geometry.coordinates)]));
+    for (const item of this.#stacCache.values()) {
+      const intersectionPolygon = turf.intersect(turf.featureCollection([bboxPolygon, turf.polygon(item.geometry.coordinates)]));
+      if (intersectionPolygon == null)
+        continue;
       const intersectionRatio = turf.area(intersectionPolygon)/bboxArea;
 
       tilesIndexes.push({
-        id: stacItems[i].id,
-        idx: i,
+        id: item.id,
         intersectRatio: intersectionRatio,
-        datetime: stacItems[i].properties.datetime,
-        stacitem: stacItems[i],
+        datetime: item.properties.datetime,
+        stacItem: item,
       })
     }
+
+    if (tilesIndexes.length == 0)
+      return [null, 0];
 
     tilesIndexes.sort((a, b) => {
       if (a.intersectRatio != b.intersectRatio)
         return b.intersectRatio - a.intersectRatio;
-      return b.datetime - a.datetime
+      return b.datetime - a.datetime;
     })
 
-    return tilesIndexes?.[0].stacitem || null;
+    return [tilesIndexes[0].stacItem, tilesIndexes[0].intersectRatio];
   }
 
   async fetchLatestS2StacItems(topLeft, bottomRight) {
