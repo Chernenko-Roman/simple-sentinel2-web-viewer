@@ -34,7 +34,6 @@ class CustomGridLayer extends L.GridLayer {
       [coordsBottomRight.lng, coordsBottomRight.lat],
       [coordsTopLeft.lng, coordsBottomRight.lat],
     ];
-    
 
     (async () => {
       const stac_item = await this.fetchLatestS2(coordsTopLeft, coordsBottomRight);
@@ -46,30 +45,12 @@ class CustomGridLayer extends L.GridLayer {
       const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
 
       const cellCoordsUtm = cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
-
-      const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
-      const resX = Math.abs(bbox[2] - bbox[0]) / tileSize.x;
-      const resY = Math.abs(bbox[3] - bbox[1]) / tileSize.y;
       const tiff = await this.openGeoTiffFile(visualBand);
-      const tileRGB = await tiff.readRasters({
-        bbox: bbox,
-        resX: resX,
-        resY: resY,
-      });
 
-      const imageData = new ImageData(tileRGB.width, tileRGB.height);
-      const data = imageData.data; // RGBA format
-
-      for (let i = 0; i < tileRGB.width * tileRGB.height; i++) {
-        data[i * 4 + 0] = tileRGB[0][i]; // R
-        data[i * 4 + 1] = tileRGB[1][i]; // G
-        data[i * 4 + 2] = tileRGB[2][i]; // B
-        data[i * 4 + 3] = 255; // A
-      }
+      const cellRGB = await this.getCellRgbImage(tiff, cellCoordsUtm, tileSize);
 
       const ctx = tile.getContext("2d");
-      const imageBitmap = await createImageBitmap(imageData);
-      ctx.drawImage(imageBitmap, 0, 0, tileSize.x, tileSize.y);
+      ctx.drawImage(cellRGB, 0, 0, tileSize.x, tileSize.y);
 
       // ctx.strokeStyle = "white";
       // ctx.lineWidth = 1;
@@ -148,6 +129,29 @@ class CustomGridLayer extends L.GridLayer {
     this.#tiffCache.set(geoTiffUrl, tiff);
 
     return tiff;
+  }
+
+  async getCellRgbImage(tiff, cellCoordsUtm, cellSize) {
+    const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
+    const resX = Math.abs(bbox[2] - bbox[0]) / cellSize.x;
+    const resY = Math.abs(bbox[3] - bbox[1]) / cellSize.y;
+    const cellRGB = await tiff.readRasters({
+      bbox: bbox,
+      resX: resX,
+      resY: resY,
+    });
+
+    const imageData = new ImageData(cellRGB.width, cellRGB.height);
+    const data = imageData.data; // RGBA format
+
+    for (let i = 0; i < cellRGB.width * cellRGB.height; i++) {
+      data[i * 4 + 0] = cellRGB[0][i]; // R
+      data[i * 4 + 1] = cellRGB[1][i]; // G
+      data[i * 4 + 2] = cellRGB[2][i]; // B
+      data[i * 4 + 3] = 255; // A
+    }
+
+    return await createImageBitmap(imageData);
   }
 }
 
