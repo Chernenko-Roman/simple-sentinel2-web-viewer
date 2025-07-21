@@ -135,14 +135,27 @@ class CustomGridLayer extends L.GridLayer {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
     const cellRGB = await tiff.readRasters({
       bbox: bbox,
-      width: cellSize.x,
-      height: cellSize.y,
+      resX: (bbox[2] - bbox[0])/cellSize.x,
+      resY: (bbox[3] - bbox[1])/cellSize.y,
+      // width: cellSize.x,
+      // height: cellSize.y,
     });
 
     return this.warpCellImage(cellRGB, cellCoordsUtm, bbox, cellSize);
   }
 
   async warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize) {
+    const origin = [cellBboxUtm[0], cellBboxUtm[3]];
+    const resolution = [
+      (cellBboxUtm[2] - cellBboxUtm[0])/origCellImage.width,
+      (cellBboxUtm[1] - cellBboxUtm[3])/origCellImage.height
+    ]
+
+    const originPixelCoords = cellCoordsUtm.map(xy => [
+      (xy[0] - origin[0])/resolution[0],
+      (xy[1] - origin[1])/resolution[1],
+    ])
+
     const warpedImage = new ImageData(cellSize.x, cellSize.y);
     const warpedData = warpedImage.data;
 
@@ -150,7 +163,7 @@ class CustomGridLayer extends L.GridLayer {
       for (let x = 0; x < cellSize.x; x++)
       {
         let dstOffset = y*cellSize.x*4 + x*4;
-        let srcOffset = Math.round(y/cellSize.y*origCellImage.height*origCellImage.width) + 
+        let srcOffset = Math.round(y/cellSize.y*origCellImage.height)*origCellImage.width + 
           Math.round(x/cellSize.x*origCellImage.width);
         warpedData[dstOffset] = origCellImage[0][srcOffset];
         warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
