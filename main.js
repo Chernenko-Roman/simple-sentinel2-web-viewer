@@ -1,65 +1,7 @@
 const { fromUrl, fromUrls, fromArrayBuffer, fromBlob } = GeoTIFF;
 
-var map = L.map("map").setView([49.4, 32.05], 12);
-
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution:
-    '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
-
-class CustomGridLayer extends L.GridLayer {
-  #tiffCache = new Map();
-
-  createTile(coords, done) {
-    var error;
-    const tileSize = this.getTileSize();
-
-    const tile = document.createElement("canvas");
-    tile.width = tileSize.x;
-    tile.height = tileSize.y;
-
-    const coordsTopLeft = map.unproject(
-      [coords.x * tileSize.x, coords.y * tileSize.y],
-      coords.z
-    );
-    const coordsBottomRight = map.unproject(
-      [(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y],
-      coords.z
-    );
-
-    const cellCoords = [
-      [coordsTopLeft.lng, coordsTopLeft.lat],
-      [coordsBottomRight.lng, coordsTopLeft.lat],
-      [coordsBottomRight.lng, coordsBottomRight.lat],
-      [coordsTopLeft.lng, coordsBottomRight.lat],
-    ];
-
-    (async () => {
-      const stac_item = await this.fetchLatestS2(coordsTopLeft, coordsBottomRight);
-
-      const visualBand = stac_item.assets.visual.href;
-      const tileId = stac_item.id;
-
-      const epsgCode = stac_item.properties["proj:epsg"];
-      const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
-
-      const cellCoordsUtm = cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
-      const tiff = await this.openGeoTiffFile(visualBand);
-
-      const cellRGB = await this.getCellRgbImage(tiff, cellCoordsUtm, tileSize);
-
-      const ctx = tile.getContext("2d");
-      ctx.drawImage(cellRGB, 0, 0, tileSize.x, tileSize.y);
-
-      // ctx.strokeStyle = "white";
-      // ctx.lineWidth = 1;
-      // ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
-
-      done(error, tile);
-    })();
-
-    return tile;
+class STACCatalog {
+  constructor() {
   }
 
   async fetchLatestS2(topLeft, bottomRight) {
@@ -119,6 +61,62 @@ class CustomGridLayer extends L.GridLayer {
     const data = await res.json();
 
     return data.features;
+  }
+}
+
+class CustomGridLayer extends L.GridLayer {
+  #tiffCache = new Map();
+  #stac = new STACCatalog();
+
+  createTile(coords, done) {
+    var error;
+    const tileSize = this.getTileSize();
+
+    const tile = document.createElement("canvas");
+    tile.width = tileSize.x;
+    tile.height = tileSize.y;
+
+    const coordsTopLeft = map.unproject(
+      [coords.x * tileSize.x, coords.y * tileSize.y],
+      coords.z
+    );
+    const coordsBottomRight = map.unproject(
+      [(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y],
+      coords.z
+    );
+
+    const cellCoords = [
+      [coordsTopLeft.lng, coordsTopLeft.lat],
+      [coordsBottomRight.lng, coordsTopLeft.lat],
+      [coordsBottomRight.lng, coordsBottomRight.lat],
+      [coordsTopLeft.lng, coordsBottomRight.lat],
+    ];
+
+    (async () => {
+      const stac_item = await this.#stac.fetchLatestS2(coordsTopLeft, coordsBottomRight);
+
+      const visualBand = stac_item.assets.visual.href;
+      const tileId = stac_item.id;
+
+      const epsgCode = stac_item.properties["proj:epsg"];
+      const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
+
+      const cellCoordsUtm = cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
+      const tiff = await this.openGeoTiffFile(visualBand);
+
+      const cellRGB = await this.getCellRgbImage(tiff, cellCoordsUtm, tileSize);
+
+      const ctx = tile.getContext("2d");
+      ctx.drawImage(cellRGB, 0, 0, tileSize.x, tileSize.y);
+
+      // ctx.strokeStyle = "white";
+      // ctx.lineWidth = 1;
+      // ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
+
+      done(error, tile);
+    })();
+
+    return tile;
   }
 
   async openGeoTiffFile(geoTiffUrl) {
@@ -186,6 +184,14 @@ class CustomGridLayer extends L.GridLayer {
     return createImageBitmap(warpedImage);
   }
 }
+
+var map = L.map("map").setView([49.4, 32.05], 12);
+
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution:
+    '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(map);
 
 const myGrid = new CustomGridLayer();
 myGrid.addTo(map);
