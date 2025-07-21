@@ -52,9 +52,9 @@ class CustomGridLayer extends L.GridLayer {
       const ctx = tile.getContext("2d");
       ctx.drawImage(cellRGB, 0, 0, tileSize.x, tileSize.y);
 
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
+      // ctx.strokeStyle = "white";
+      // ctx.lineWidth = 1;
+      // ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
 
       done(error, tile);
     })();
@@ -137,8 +137,6 @@ class CustomGridLayer extends L.GridLayer {
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
-      // width: cellSize.x,
-      // height: cellSize.y,
     });
 
     return this.warpCellImage(cellRGB, cellCoordsUtm, bbox, cellSize);
@@ -156,15 +154,27 @@ class CustomGridLayer extends L.GridLayer {
       (xy[1] - origin[1])/resolution[1],
     ])
 
+    const [A, B, C, D] = originPixelCoords;
+    const AB = [B[0] - A[0], B[1] - A[1]];
+    const AD = [D[0] - A[0], D[1] - A[1]];
+    const BC = [C[0] - B[0], C[1] - B[1]];
+
     const warpedImage = new ImageData(cellSize.x, cellSize.y);
     const warpedData = warpedImage.data;
 
     for (let y = 0; y < cellSize.y; y++)
       for (let x = 0; x < cellSize.x; x++)
       {
+        const x1 = x / cellSize.x, y1 = y / cellSize.y;
+
+        let x0 = A[0] + x1*AB[0] + y1*AD[0] + x1*y1*(BC[0] - AD[0]);
+        let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*(BC[1] - AD[1]);
+
+        x0 = Math.round(x0);
+        y0 = Math.round(y0);
+
         let dstOffset = y*cellSize.x*4 + x*4;
-        let srcOffset = Math.round(y/cellSize.y*origCellImage.height)*origCellImage.width + 
-          Math.round(x/cellSize.x*origCellImage.width);
+        let srcOffset = y0*origCellImage.width + x0;
         warpedData[dstOffset] = origCellImage[0][srcOffset];
         warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
         warpedData[dstOffset + 2] = origCellImage[2][srcOffset];
