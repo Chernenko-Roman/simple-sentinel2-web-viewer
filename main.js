@@ -52,9 +52,9 @@ class CustomGridLayer extends L.GridLayer {
       const ctx = tile.getContext("2d");
       ctx.drawImage(cellRGB, 0, 0, tileSize.x, tileSize.y);
 
-      // ctx.strokeStyle = "white";
-      // ctx.lineWidth = 1;
-      // ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, tileSize.x, tileSize.y);
 
       done(error, tile);
     })();
@@ -143,22 +143,22 @@ class CustomGridLayer extends L.GridLayer {
   }
 
   async warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize) {
-    const imageData = new ImageData(origCellImage.width, origCellImage.height);
-    const data = imageData.data; // RGBA format
+    const warpedImage = new ImageData(cellSize.x, cellSize.y);
+    const warpedData = warpedImage.data;
 
-    for (let i = 0; i < origCellImage.width * origCellImage.height; i++) {
-      if (origCellImage[0][i] > 0 | origCellImage[1][i] > 0 | origCellImage[2][i] > 0) {
-        data[i * 4 + 0] = origCellImage[0][i]; // R
-        data[i * 4 + 1] = origCellImage[1][i]; // G
-        data[i * 4 + 2] = origCellImage[2][i]; // B
-        data[i * 4 + 3] = 255; // A
+    for (let y = 0; y < cellSize.y; y++)
+      for (let x = 0; x < cellSize.x; x++)
+      {
+        let dstOffset = y*cellSize.x*4 + x*4;
+        let srcOffset = Math.round(y/cellSize.y*origCellImage.height*origCellImage.width) + 
+          Math.round(x/cellSize.x*origCellImage.width);
+        warpedData[dstOffset] = origCellImage[0][srcOffset];
+        warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
+        warpedData[dstOffset + 2] = origCellImage[2][srcOffset];
+        warpedData[dstOffset + 3] = 255;
       }
-      else {
-        data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = data[i * 4 + 3] = 0;
-      }
-    }
-
-    return createImageBitmap(imageData);
+    
+    return createImageBitmap(warpedImage);
   }
 }
 
