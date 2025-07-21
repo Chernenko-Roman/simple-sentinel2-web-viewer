@@ -171,7 +171,9 @@ class CustomGridLayer extends L.GridLayer {
         let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*(BC[1] - AD[1]);
 
         x0 = Math.round(x0);
+        x0 = Math.min(Math.max(x0, 0), origCellImage.width - 1);
         y0 = Math.round(y0);
+        y0 = Math.min(Math.max(y0, 0), origCellImage.height - 1);
 
         let dstOffset = y*cellSize.x*4 + x*4;
         let srcOffset = y0*origCellImage.width + x0;
