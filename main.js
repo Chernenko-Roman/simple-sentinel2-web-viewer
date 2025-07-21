@@ -139,14 +139,18 @@ class CustomGridLayer extends L.GridLayer {
       height: cellSize.y,
     });
 
-    const imageData = new ImageData(cellRGB.width, cellRGB.height);
+    return this.warpCellImage(cellRGB, cellCoordsUtm, bbox, cellSize);
+  }
+
+  async warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize) {
+    const imageData = new ImageData(origCellImage.width, origCellImage.height);
     const data = imageData.data; // RGBA format
 
-    for (let i = 0; i < cellRGB.width * cellRGB.height; i++) {
-      if (cellRGB[0][i] > 0 | cellRGB[1][i] > 0 | cellRGB[2][i] > 0) {
-        data[i * 4 + 0] = cellRGB[0][i]; // R
-        data[i * 4 + 1] = cellRGB[1][i]; // G
-        data[i * 4 + 2] = cellRGB[2][i]; // B
+    for (let i = 0; i < origCellImage.width * origCellImage.height; i++) {
+      if (origCellImage[0][i] > 0 | origCellImage[1][i] > 0 | origCellImage[2][i] > 0) {
+        data[i * 4 + 0] = origCellImage[0][i]; // R
+        data[i * 4 + 1] = origCellImage[1][i]; // G
+        data[i * 4 + 2] = origCellImage[2][i]; // B
         data[i * 4 + 3] = 255; // A
       }
       else {
