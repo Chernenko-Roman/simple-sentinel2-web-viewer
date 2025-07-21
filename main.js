@@ -133,25 +133,28 @@ class CustomGridLayer extends L.GridLayer {
 
   async getCellRgbImage(tiff, cellCoordsUtm, cellSize) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
-    const resX = Math.abs(bbox[2] - bbox[0]) / cellSize.x;
-    const resY = Math.abs(bbox[3] - bbox[1]) / cellSize.y;
     const cellRGB = await tiff.readRasters({
       bbox: bbox,
-      resX: resX,
-      resY: resY,
+      width: cellSize.x,
+      height: cellSize.y,
     });
 
     const imageData = new ImageData(cellRGB.width, cellRGB.height);
     const data = imageData.data; // RGBA format
 
     for (let i = 0; i < cellRGB.width * cellRGB.height; i++) {
-      data[i * 4 + 0] = cellRGB[0][i]; // R
-      data[i * 4 + 1] = cellRGB[1][i]; // G
-      data[i * 4 + 2] = cellRGB[2][i]; // B
-      data[i * 4 + 3] = 255; // A
+      if (cellRGB[0][i] > 0 | cellRGB[1][i] > 0 | cellRGB[2][i] > 0) {
+        data[i * 4 + 0] = cellRGB[0][i]; // R
+        data[i * 4 + 1] = cellRGB[1][i]; // G
+        data[i * 4 + 2] = cellRGB[2][i]; // B
+        data[i * 4 + 3] = 255; // A
+      }
+      else {
+        data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = data[i * 4 + 3] = 0;
+      }
     }
 
-    return await createImageBitmap(imageData);
+    return createImageBitmap(imageData);
   }
 }
 
