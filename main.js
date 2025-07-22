@@ -194,7 +194,9 @@ class CustomGridLayer extends L.GridLayer {
       resY: (bbox[3] - bbox[1])/cellSize.y,
       signal: signal,
     });
-
+    // const requestedRes = Math.min((bbox[2] - bbox[0])/cellSize.x, (bbox[3] - bbox[1])/cellSize.y);
+    // const actualRes = Math.min((bbox[2] - bbox[0])/cellRGB.width, (bbox[3] - bbox[1])/cellRGB.height);
+    // console.log(`Requested resolution ${requestedRes}, actual resolution ${actualRes}`);
     return this.warpCellImage(cellRGB, cellCoordsUtm, bbox, cellSize);
   }
 
@@ -243,15 +245,27 @@ class CustomGridLayer extends L.GridLayer {
   }
 }
 
-var map = L.map("map").setView([49.4, 32.05], 12);
-
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution:
     '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
+})
 
-const sentinel2Layer = new CustomGridLayer();
+const esriLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 19,
+  attribution:
+    "Tiles &copy; Esri — Source: Esri, Earthstar Geographics"
+}
+)
+
+const sentinel2Layer = new CustomGridLayer({
+  minZoom: 8,
+  maxZoom: 16,
+  minNativeZoom: 8,
+  maxNativeZoom: 14,
+  attribution: "ESA Sentinel-2"
+});
+
 sentinel2Layer.on('tileunload', e => {
   console.log('Tile unloaded:', e.coords);
   const key = `${e.coords.z}/${e.coords.x}/${e.coords.y}`;
@@ -263,4 +277,21 @@ sentinel2Layer.on('tileunload', e => {
   }
 });
 
+const baseMaps = {
+  "OpenStreetMap": osmLayer,
+  "Esri World Imagery": esriLayer,
+};
+
+const overlayMaps = {
+  "ESA Sentinel-2": sentinel2Layer
+};
+
+const map = L.map('map', {
+  center: [49.4, 32.05],
+  zoom: 12,
+});
+
+osmLayer.addTo(map);
 sentinel2Layer.addTo(map);
+
+L.control.layers(baseMaps, overlayMaps).addTo(map);
