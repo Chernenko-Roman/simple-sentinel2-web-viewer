@@ -1,249 +1,89 @@
-const { fromUrl, fromUrls, fromArrayBuffer, fromBlob } = GeoTIFF;
+class Sentinel2GridLayer extends L.GridLayer {
+  #worker = new Worker("Sentinel2GridLayoutWorker.js");
+  #tileInfo = new Map();
 
-class STACCatalog {
-  #stacCache = new Map();
+  constructor(options) {
+    super(options);
 
-  constructor() {
-  }
-
-  async fetchLatestS2(topLeft, bottomRight) {
-    let [stacItem, bboxIntersectionRato] = this.findBestItem(topLeft, bottomRight);
-
-    if (bboxIntersectionRato < 1 - 1e-6)
-      await this.updateCachedItems(topLeft, bottomRight);
-      [stacItem, bboxIntersectionRato] = this.findBestItem(topLeft, bottomRight);
-
-    if (bboxIntersectionRato > 0.1)
-      return stacItem;
-    else
-      return null;
-
-  }
-
-  async updateCachedItems(topLeft, bottomRight) {
-    const stacItems = await this.fetchLatestS2StacItems(topLeft, bottomRight);
-    
-    for (let i = 0; i < stacItems.length; i++)
-    {
-      const id = stacItems[i].id;
-      if (!this.#stacCache.has(id))
-        this.#stacCache.set(id, stacItems[i]);
-    }
-  }
-
-  findBestItem(topLeft, bottomRight) {
-    if (this.#stacCache.size == 0)
-      return [null, 0];
-
-    const bbox = [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat];
-    const bboxPolygon = turf.bboxPolygon(bbox);
-    const bboxArea = turf.area(bboxPolygon);
-    let tilesIndexes = [];
-
-    for (const item of this.#stacCache.values()) {
-      const intersectionPolygon = turf.intersect(turf.featureCollection([bboxPolygon, turf.polygon(item.geometry.coordinates)]));
-      if (intersectionPolygon == null)
-        continue;
-      const intersectionRatio = turf.area(intersectionPolygon)/bboxArea;
-
-      tilesIndexes.push({
-        id: item.id,
-        intersectRatio: intersectionRatio,
-        datetime: item.properties.datetime,
-        stacItem: item,
-      })
-    }
-
-    if (tilesIndexes.length == 0)
-      return [null, 0];
-
-    tilesIndexes.sort((a, b) => {
-      if (a.intersectRatio != b.intersectRatio)
-        return b.intersectRatio - a.intersectRatio;
-      return b.datetime - a.datetime;
-    })
-
-    return [tilesIndexes[0].stacItem, tilesIndexes[0].intersectRatio];
-  }
-
-  async fetchLatestS2StacItems(topLeft, bottomRight) {
-    const body = {
-      collections: ["sentinel-2-l2a"],
-      bbox: [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat],
-      query: {
-        "eo:cloud_cover": {
-          lt: 10, // Less than 10% cloud cover
-        },
-      },
-      limit: 10,
-      sortby: "-properties.datetime",
+    this.#worker.onmessage = (pkg) => {
+      this.handleWorkerMessage(pkg.data);
     };
 
-    const res = await fetch(
-      "https://earth-search.aws.element84.com/v1/search",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!res.ok) throw new Error("STAC query failed: " + res.status);
-    const data = await res.json();
-
-    return data.features;
+    this.on('tileunload', e => {
+      console.log('Tile unloaded:', e.coords);
+      this.unloadTile(e.coords);
+    });
   }
-}
-
-class CustomGridLayer extends L.GridLayer {
-  #tiffCache = new Map();
-  #stac = new STACCatalog();
-  abortControllers = new Map();
 
   createTile(coords, done) {
     console.log(`Start loading x = ${coords.x} y = ${coords.y} z = ${coords.z}`);
 
     const key = `${coords.z}/${coords.x}/${coords.y}`;
-    const controller = new AbortController();
-    this.abortControllers.set(key, controller);
 
     const tile = document.createElement("canvas");
     const tileSize = this.getTileSize();
     tile.width = tileSize.x;
     tile.height = tileSize.y;
 
-    try {
-      var error;
+    const coordsTopLeft = map.unproject(
+      [coords.x * tileSize.x, coords.y * tileSize.y], coords.z
+    );
+    const coordsBottomRight = map.unproject(
+      [(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y], coords.z
+    );
 
-      const coordsTopLeft = map.unproject(
-        [coords.x * tileSize.x, coords.y * tileSize.y],
-        coords.z
-      );
-      const coordsBottomRight = map.unproject(
-        [(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y],
-        coords.z
-      );
+    const cellCoords = [
+      [coordsTopLeft.lng, coordsTopLeft.lat],
+      [coordsBottomRight.lng, coordsTopLeft.lat],
+      [coordsBottomRight.lng, coordsBottomRight.lat],
+      [coordsTopLeft.lng, coordsBottomRight.lat],
+    ];
 
-      const cellCoords = [
-        [coordsTopLeft.lng, coordsTopLeft.lat],
-        [coordsBottomRight.lng, coordsTopLeft.lat],
-        [coordsBottomRight.lng, coordsBottomRight.lat],
-        [coordsTopLeft.lng, coordsBottomRight.lat],
-      ];
+    this.#tileInfo.set(key, {
+      canvas: tile,
+      tileSize: tileSize,
+      doneCallback: done,
+    });
 
-      (async () => {
-        const stac_item = await this.#stac.fetchLatestS2(coordsTopLeft, coordsBottomRight);
-
-        if (controller.signal.aborted)
-        {
-          console.log("Abort after fetching stac item");
-          return;
-        }
-
-        const visualBand = stac_item.assets.visual.href;
-        const tileId = stac_item.id;
-
-        const epsgCode = stac_item.properties["proj:epsg"];
-        const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
-
-        const cellCoordsUtm = cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
-        const tiff = await this.openGeoTiffFile(visualBand);
-
-        if (controller.signal.aborted)
-        {
-          console.log("Abort after opening geotiff file");
-          return;
-        }
-
-        const cellRGB = await this.getCellRgbImage(tiff, cellCoordsUtm, tileSize, controller.signal);
-
-        if (controller.signal.aborted)
-        {
-          console.log("Abort after getting cell RGB data");
-          return;
-        }
-
-        const ctx = tile.getContext("2d");
-        ctx.drawImage(cellRGB, 0, 0, tileSize.x, tileSize.y);
-
-        console.log(`Finish loading x = ${coords.x} y = ${coords.y} z = ${coords.z}`);
-        done(error, tile);
-      })();
-    } catch (err) {
-      console.error(`Tile fetching error: ${err.message}`);
-    }
+    this.#worker.postMessage({
+      type: "createTile",
+      key: key,
+      coords: coords,
+      coordsTopLeft: coordsTopLeft,
+      coordsBottomRight: coordsBottomRight,
+      cellCoords: cellCoords,
+      tileSize: tileSize,
+    });
 
     return tile;
   }
 
-  async openGeoTiffFile(geoTiffUrl) {
-    if (this.#tiffCache.has(geoTiffUrl))
-      return this.#tiffCache.get(geoTiffUrl);
-    
-    const tiff = fromUrl(geoTiffUrl);
-    this.#tiffCache.set(geoTiffUrl, tiff);
-
-    return tiff;
-  }
-
-  async getCellRgbImage(tiff, cellCoordsUtm, cellSize, signal) {
-    const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
-    const cellRGB = await tiff.readRasters({
-      bbox: bbox,
-      resX: (bbox[2] - bbox[0])/cellSize.x,
-      resY: (bbox[3] - bbox[1])/cellSize.y,
-      signal: signal,
+  unloadTile(coords) {
+    const key = `${coords.z}/${coords.x}/${coords.y}`;
+    this.#worker.postMessage({
+      type: "unloadTile",
+      key: key,
+      coords: coords
     });
-    // const requestedRes = Math.min((bbox[2] - bbox[0])/cellSize.x, (bbox[3] - bbox[1])/cellSize.y);
-    // const actualRes = Math.min((bbox[2] - bbox[0])/cellRGB.width, (bbox[3] - bbox[1])/cellRGB.height);
-    // console.log(`Requested resolution ${requestedRes}, actual resolution ${actualRes}`);
-    return this.warpCellImage(cellRGB, cellCoordsUtm, bbox, cellSize);
+    this.#tileInfo.delete(key);
   }
 
-  async warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize) {
-    const origin = [cellBboxUtm[0], cellBboxUtm[3]];
-    const resolution = [
-      (cellBboxUtm[2] - cellBboxUtm[0])/origCellImage.width,
-      (cellBboxUtm[1] - cellBboxUtm[3])/origCellImage.height
-    ]
-
-    const originPixelCoords = cellCoordsUtm.map(xy => [
-      (xy[0] - origin[0])/resolution[0],
-      (xy[1] - origin[1])/resolution[1],
-    ])
-
-    const [A, B, C, D] = originPixelCoords;
-    const AB = [B[0] - A[0], B[1] - A[1]];
-    const AD = [D[0] - A[0], D[1] - A[1]];
-    const BC = [C[0] - B[0], C[1] - B[1]];
-
-    const warpedImage = new ImageData(cellSize.x, cellSize.y);
-    const warpedData = warpedImage.data;
-
-    for (let y = 0; y < cellSize.y; y++)
-      for (let x = 0; x < cellSize.x; x++)
+  handleWorkerMessage(pkg) {
+    if (pkg.type == "done")
+    {
+      if (this.#tileInfo.has(pkg.key))
       {
-        const x1 = x / cellSize.x, y1 = y / cellSize.y;
+        const currTile = this.#tileInfo.get(pkg.key);
+        const ctx = currTile.canvas.getContext("2d");
+        ctx.drawImage(pkg.cellRGB, 0, 0, currTile.tileSize.x, currTile.tileSize.y);
 
-        let x0 = A[0] + x1*AB[0] + y1*AD[0] + x1*y1*(BC[0] - AD[0]);
-        let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*(BC[1] - AD[1]);
-
-        x0 = Math.round(x0);
-        x0 = Math.min(Math.max(x0, 0), origCellImage.width - 1);
-        y0 = Math.round(y0);
-        y0 = Math.min(Math.max(y0, 0), origCellImage.height - 1);
-
-        let dstOffset = y*cellSize.x*4 + x*4;
-        let srcOffset = y0*origCellImage.width + x0;
-        warpedData[dstOffset] = origCellImage[0][srcOffset];
-        warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
-        warpedData[dstOffset + 2] = origCellImage[2][srcOffset];
-        warpedData[dstOffset + 3] = 255;
+        currTile.doneCallback(null, currTile.canvas);
+        this.#tileInfo.delete(pkg.key);
       }
-    
-    return createImageBitmap(warpedImage);
+    }
   }
 }
+
 
 const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
@@ -258,23 +98,12 @@ const esriLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/servi
 }
 )
 
-const sentinel2Layer = new CustomGridLayer({
+const sentinel2Layer = new Sentinel2GridLayer({
   minZoom: 8,
   maxZoom: 16,
   minNativeZoom: 8,
   maxNativeZoom: 14,
   attribution: "ESA Sentinel-2"
-});
-
-sentinel2Layer.on('tileunload', e => {
-  console.log('Tile unloaded:', e.coords);
-  const key = `${e.coords.z}/${e.coords.x}/${e.coords.y}`;
-  const controller = sentinel2Layer.abortControllers.get(key);
-  if (controller) {
-    controller.abort();
-    sentinel2Layer.abortControllers.delete(key);
-    console.log(`Tile ${key} aborted and unloaded.`);
-  }
 });
 
 const baseMaps = {
