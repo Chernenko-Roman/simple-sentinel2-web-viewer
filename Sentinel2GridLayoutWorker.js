@@ -4,6 +4,8 @@ importScripts("https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js");
 
 const { fromUrl, fromUrls, fromArrayBuffer, fromBlob } = GeoTIFF;
 
+const bboxCoverageThr = 1 - 1e-4;
+
 class STACCatalog {
   #stacCache = new Map();
 
@@ -11,17 +13,16 @@ class STACCatalog {
   }
 
   async fetchLatestS2(topLeft, bottomRight) {
-    let [stacItem, bboxIntersectionRato] = this.findBestItem(topLeft, bottomRight);
+    let [stacItems, bboxIntersectionRatio] = this.findBestItem(topLeft, bottomRight);
 
-    if (bboxIntersectionRato < 1 - 1e-6)
+    if (bboxIntersectionRatio < bboxCoverageThr)
       await this.updateCachedItems(topLeft, bottomRight);
-      [stacItem, bboxIntersectionRato] = this.findBestItem(topLeft, bottomRight);
+      [stacItems, bboxIntersectionRatio] = this.findBestItem(topLeft, bottomRight);
 
-    if (bboxIntersectionRato > 0.1)
-      return stacItem;
+    if (bboxIntersectionRatio > 0.1)
+      return stacItems;
     else
       return null;
-
   }
 
   async updateCachedItems(topLeft, bottomRight) {
@@ -52,6 +53,7 @@ class STACCatalog {
 
       tilesIndexes.push({
         id: item.id,
+        bboxIntersectPolygon: intersectionPolygon,
         intersectRatio: intersectionRatio,
         datetime: item.properties.datetime,
         stacItem: item,
@@ -67,7 +69,21 @@ class STACCatalog {
       return b.datetime - a.datetime;
     })
 
-    return [tilesIndexes[0].stacItem, tilesIndexes[0].intersectRatio];
+    const selectedStacItems = [tilesIndexes[0].stacItem];
+    let bboxIntersectPolygon = tilesIndexes[0].bboxIntersectPolygon;
+    let bboxIntersectionRatio = tilesIndexes[0].intersectRatio;
+
+    for (let i = 1; i < tilesIndexes.length && bboxIntersectionRatio < bboxCoverageThr; i++) {
+      const newBboxIntersectPolygon = turf.union(turf.featureCollection([bboxIntersectPolygon, tilesIndexes[i].bboxIntersectPolygon]));
+      const newBboxIntersectionRatio = turf.area(newBboxIntersectPolygon) / bboxArea;
+      if (newBboxIntersectionRatio - bboxIntersectionRatio > 0.001) {
+        selectedStacItems.push(tilesIndexes[i].stacItem);
+        bboxIntersectPolygon = newBboxIntersectPolygon;
+        bboxIntersectionRatio = newBboxIntersectionRatio;
+      }
+    }
+
+    return [selectedStacItems, tilesIndexes[0].intersectRatio];
   }
 
   async fetchLatestS2StacItems(topLeft, bottomRight) {
@@ -118,7 +134,11 @@ async function createTile(pkg) {
   const controller = new AbortController();
   abortControllers.set(pkg.key, controller);
 
-  const stacItem = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
+  const stacItems = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
+  if (stacItems.length > 1) {
+    console.log(`Find ${stacItems.length} STAC items for the tile ${pkg.key}`);
+  }
+  const stacItem = stacItems[0];
 
   if (controller.signal.aborted)
   {
@@ -183,10 +203,12 @@ async function getCellRgbImage(tiff, cellCoordsUtm, cellSize, signal) {
     signal: signal,
   });
 
-  return warpCellImage(cellRGB, cellCoordsUtm, bbox, cellSize);
+  const warpedImage = new ImageData(cellSize.x, cellSize.y);
+  await warpCellImage(cellRGB, warpedImage, cellCoordsUtm, bbox, cellSize);
+  return createImageBitmap(warpedImage);
 }
 
-async function warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize) {
+async function warpCellImage(origCellImage, warpedImage, cellCoordsUtm, cellBboxUtm, cellSize) {
   const origin = [cellBboxUtm[0], cellBboxUtm[3]];
   const resolution = [
     (cellBboxUtm[2] - cellBboxUtm[0])/origCellImage.width,
@@ -204,7 +226,6 @@ async function warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize
   const BC = [C[0] - B[0], C[1] - B[1]];
   const BCsubAD = [BC[0] - AD[0], BC[1] - AD[1]];
 
-  const warpedImage = new ImageData(cellSize.x, cellSize.y);
   const warpedData = warpedImage.data;
   let dstOffset = 0;
 
@@ -234,6 +255,4 @@ async function warpCellImage(origCellImage, cellCoordsUtm, cellBboxUtm, cellSize
 
       dstOffset += 4;
     }
-  
-  return createImageBitmap(warpedImage);
 }
