@@ -232,25 +232,25 @@ async function warpCellImage(origCellImage, warpedImage, cellCoordsUtm, cellBbox
   for (let y = 0; y < cellSize.y; y++)
     for (let x = 0; x < cellSize.x; x++)
     {
-      const x1 = x / cellSize.x, y1 = y / cellSize.y;
+      if (warpedData[dstOffset + 3]!=255) {
+        const x1 = x / cellSize.x, y1 = y / cellSize.y;
 
-      let x0 = A[0] + x1*AB[0] + y1*AD[0] + x1*y1*BCsubAD[0];
-      let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*BCsubAD[0];
+        let x0 = A[0] + x1*AB[0] + y1*AD[0] + x1*y1*BCsubAD[0];
+        let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*BCsubAD[0];
 
-      x0 = Math.round(x0);
-      x0 = Math.min(Math.max(x0, 0), origCellImage.width - 1);
-      y0 = Math.round(y0);
-      y0 = Math.min(Math.max(y0, 0), origCellImage.height - 1);
+        x0 = Math.round(x0);
+        x0 = Math.min(Math.max(x0, 0), origCellImage.width - 1);
+        y0 = Math.round(y0);
+        y0 = Math.min(Math.max(y0, 0), origCellImage.height - 1);
 
-      const srcOffset = y0*origCellImage.width + x0;
-      
-      if (warpedData[dstOffset + 3]!=255 && 
-        (origCellImage[0][srcOffset] > 0 || origCellImage[1][srcOffset] > 0 || origCellImage[2][srcOffset] > 0))
-      {
-        warpedData[dstOffset] = origCellImage[0][srcOffset];
-        warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
-        warpedData[dstOffset + 2] = origCellImage[2][srcOffset];
-        warpedData[dstOffset + 3] = 255;
+        const srcOffset = y0*origCellImage.width + x0;
+        
+        if (origCellImage[0][srcOffset] > 0 || origCellImage[1][srcOffset] > 0 || origCellImage[2][srcOffset] > 0) {
+          warpedData[dstOffset] = origCellImage[0][srcOffset];
+          warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
+          warpedData[dstOffset + 2] = origCellImage[2][srcOffset];
+          warpedData[dstOffset + 3] = 255;
+        }
       }
 
       dstOffset += 4;
