@@ -135,38 +135,39 @@ async function createTile(pkg) {
   abortControllers.set(pkg.key, controller);
 
   const stacItems = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
-  if (stacItems.length > 1) {
-    console.log(`Find ${stacItems.length} STAC items for the tile ${pkg.key}`);
+
+  const warpedImage = new ImageData(pkg.tileSize.x, pkg.tileSize.y);
+  for (const stacItem of stacItems) {
+    if (controller.signal.aborted)
+    {
+      console.log("Abort after fetching stac item");
+      return;
+    }
+
+    const visualBand = stacItem.assets.visual.href;
+
+    const epsgCode = stacItem.properties["proj:epsg"];
+    const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
+
+    const cellCoordsUtm = pkg.cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
+    const tiff = await openGeoTiffFile(visualBand);
+
+    if (controller.signal.aborted)
+    {
+      console.log("Abort after opening geotiff file");
+      return;
+    }
+
+    await getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, controller.signal);
   }
-  const stacItem = stacItems[0];
-
-  if (controller.signal.aborted)
-  {
-    console.log("Abort after fetching stac item");
-    return;
-  }
-
-  const visualBand = stacItem.assets.visual.href;
-
-  const epsgCode = stacItem.properties["proj:epsg"];
-  const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
-
-  const cellCoordsUtm = pkg.cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
-  const tiff = await openGeoTiffFile(visualBand);
-
-  if (controller.signal.aborted)
-  {
-    console.log("Abort after opening geotiff file");
-    return;
-  }
-
-  const cellRGB = await getCellRgbImage(tiff, cellCoordsUtm, pkg.tileSize, controller.signal);
 
   if (controller.signal.aborted)
   {
     console.log("Abort after getting cell RGB data");
     return;
   }
+
+  const cellRGB = await createImageBitmap(warpedImage);
 
   self.postMessage({
       type: "done",
@@ -194,7 +195,7 @@ async function openGeoTiffFile(geoTiffUrl) {
   return tiff;
 }
 
-async function getCellRgbImage(tiff, cellCoordsUtm, cellSize, signal) {
+async function getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
   const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
   const cellRGB = await tiff.readRasters({
     bbox: bbox,
@@ -203,9 +204,7 @@ async function getCellRgbImage(tiff, cellCoordsUtm, cellSize, signal) {
     signal: signal,
   });
 
-  const warpedImage = new ImageData(cellSize.x, cellSize.y);
   await warpCellImage(cellRGB, warpedImage, cellCoordsUtm, bbox, cellSize);
-  return createImageBitmap(warpedImage);
 }
 
 async function warpCellImage(origCellImage, warpedImage, cellCoordsUtm, cellBboxUtm, cellSize) {
