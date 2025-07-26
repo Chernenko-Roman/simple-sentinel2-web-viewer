@@ -19,7 +19,13 @@ class STACCatalog {
       await this.updateCachedItems(topLeft, bottomRight);
       [stacItems, bboxIntersectionRatio] = this.findBestItem(topLeft, bottomRight);
 
-    if (bboxIntersectionRatio > 0.1)
+    if (bboxIntersectionRatio < bboxCoverageThr)
+    {
+      console.log(`Cell coverage ratio ${bboxIntersectionRatio} with ${stacItems.length} items`);
+      this.findBestItem(topLeft, bottomRight);  
+    }
+
+    if (bboxIntersectionRatio > 0.01)
       return stacItems;
     else
       return null;
@@ -54,7 +60,7 @@ class STACCatalog {
       tilesIndexes.push({
         id: item.id,
         bboxIntersectPolygon: intersectionPolygon,
-        intersectRatio: intersectionRatio,
+        intersectRatio: Math.round(intersectionRatio*100)/100,
         datetime: item.properties.datetime,
         stacItem: item,
       })
@@ -63,10 +69,16 @@ class STACCatalog {
     if (tilesIndexes.length == 0)
       return [null, 0];
 
+    // tilesIndexes.sort((a, b) => {
+    //   if (a.intersectRatio != b.intersectRatio)
+    //     return b.intersectRatio - a.intersectRatio;
+    //   return b.datetime - a.datetime;
+    // })
+
     tilesIndexes.sort((a, b) => {
-      if (a.intersectRatio != b.intersectRatio)
-        return b.intersectRatio - a.intersectRatio;
-      return b.datetime - a.datetime;
+      if (a.datetime != b.datetime)
+        return b.datetime - a.datetime;
+      return b.intersectRatio - a.intersectRatio;
     })
 
     const selectedStacItems = [tilesIndexes[0].stacItem];
@@ -83,7 +95,7 @@ class STACCatalog {
       }
     }
 
-    return [selectedStacItems, tilesIndexes[0].intersectRatio];
+    return [selectedStacItems, bboxIntersectionRatio];
   }
 
   async fetchLatestS2StacItems(topLeft, bottomRight) {
@@ -95,7 +107,7 @@ class STACCatalog {
           lt: 10, // Less than 10% cloud cover
         },
       },
-      limit: 10,
+      limit: 20,
       sortby: "-properties.datetime",
     };
 
