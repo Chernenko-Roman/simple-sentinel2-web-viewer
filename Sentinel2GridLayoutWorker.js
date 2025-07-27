@@ -130,6 +130,7 @@ class STACCatalog {
 tiffCache = new Map();
 stac = new STACCatalog();
 abortControllers = new Map();
+const tiffPool = new GeoTIFF.Pool();
 
 self.onmessage = (pkg) => {
   switch (pkg.data.type) {
@@ -210,6 +211,7 @@ async function openGeoTiffFile(geoTiffUrl) {
 async function getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
   const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
   const cellRGB = await tiff.readRasters({
+    pool: tiffPool,
     bbox: bbox,
     resX: (bbox[2] - bbox[0])/cellSize.x,
     resY: (bbox[3] - bbox[1])/cellSize.y,
