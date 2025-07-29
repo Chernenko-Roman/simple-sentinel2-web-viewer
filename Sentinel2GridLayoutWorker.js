@@ -1,8 +1,7 @@
-importScripts("https://cdn.jsdelivr.net/npm/geotiff");
-importScripts("https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.19.7/proj4.js");
-importScripts("https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js");
-
-const { fromUrl, fromUrls, fromArrayBuffer, fromBlob } = GeoTIFF;
+import { fromUrl, Pool } from 'https://esm.sh/geotiff';
+import proj4 from 'https://esm.sh/proj4';
+import * as turf from 'https://esm.sh/@turf/turf@7';
+import QuickLRU from 'https://esm.sh/quick-lru';
 
 const bboxCoverageThr = 1 - 1e-4;
 
@@ -127,10 +126,11 @@ class STACCatalog {
   }
 }
 
-tiffCache = new Map();
-stac = new STACCatalog();
-abortControllers = new Map();
-const tiffPool = new GeoTIFF.Pool();
+const tiffCache = new Map();
+const stac = new STACCatalog();
+const abortControllers = new Map();
+const tiffPool = new Pool();
+const cellRgbCache = new QuickLRU({ maxSize: 1000 });
 
 self.onmessage = (pkg) => {
   switch (pkg.data.type) {

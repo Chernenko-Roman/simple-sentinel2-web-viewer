@@ -1,5 +1,5 @@
 class Sentinel2GridLayer extends L.GridLayer {
-  #worker = new Worker("Sentinel2GridLayoutWorker.js");
+  #worker = new Worker("Sentinel2GridLayoutWorker.js", { type: 'module' });
   #tileInfo = new Map();
 
   constructor(options) {
