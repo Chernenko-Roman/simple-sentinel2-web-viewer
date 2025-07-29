@@ -25,9 +25,9 @@ class STACCatalog {
     }
 
     if (bboxIntersectionRatio > 0.01)
-      return stacItems;
+      return [stacItems, bboxIntersectionRatio >= bboxCoverageThr];
     else
-      return null;
+      return [null, false];
   }
 
   async updateCachedItems(topLeft, bottomRight) {
@@ -144,10 +144,19 @@ self.onmessage = (pkg) => {
 };
 
 async function createTile(pkg) {
+  if (cellRgbCache.has(pkg.key)) {
+    self.postMessage({
+      type: "done",
+      key: pkg.key,
+      cellRGB: await createImageBitmap(cellRgbCache.get(pkg.key)),
+    });
+    
+    return;
+  }
   const controller = new AbortController();
   abortControllers.set(pkg.key, controller);
 
-  const stacItems = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
+  const [stacItems, fullCoverage] = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
 
   const warpedImage = new ImageData(pkg.tileSize.x, pkg.tileSize.y);
   for (const stacItem of stacItems) {
@@ -187,6 +196,14 @@ async function createTile(pkg) {
       key: pkg.key,
       cellRGB: cellRGB,
     });
+
+  if (fullCoverage) {
+    const offscreen = new OffscreenCanvas(cellRGB.width, cellRGB.height);
+    const ctx = offscreen.getContext('2d');
+    ctx.drawImage(cellRGB, 0, 0);
+    const blob = await offscreen.convertToBlob({ type: 'image/png' });
+    cellRgbCache.set(pkg.key, blob);
+  }
 }
 
 function unloadTile(pkg) {
