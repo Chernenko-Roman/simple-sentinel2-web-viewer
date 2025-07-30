@@ -107,11 +107,13 @@ class STACCatalog {
         },
       },
       limit: 20,
-      sortby: "-properties.datetime",
+      // sortby: "-properties.datetime",
+      sortby: [{ field: 'datetime', direction: 'desc' }],
     };
 
     const res = await fetch(
-      "https://earth-search.aws.element84.com/v1/search",
+      // "https://earth-search.aws.element84.com/v1/search",
+      "https://planetarycomputer.microsoft.com/api/stac/v1/search",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,6 +133,24 @@ const stac = new STACCatalog();
 const abortControllers = new Map();
 const tiffPool = new Pool();
 const cellRgbCache = new QuickLRU({ maxSize: 1000 });
+let mspcSasToken = null;
+
+async function updateMspcSasToken() {
+  const signResp = await fetch("https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a?write=false", {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  const result = await signResp.json();
+  mspcSasToken = result.token;
+
+  console.log("MSPC SAS token refreshed");
+  setTimeout(updateMspcSasToken, 45 * 60 * 1000); // refresh every 50 min
+}
+
+(async () => {
+  await updateMspcSasToken();
+})();
 
 self.onmessage = (pkg) => {
   switch (pkg.data.type) {
@@ -217,10 +237,23 @@ function unloadTile(pkg) {
 
 async function openGeoTiffFile(geoTiffUrl) {
   if (tiffCache.has(geoTiffUrl))
-    return tiffCache.get(geoTiffUrl);
+  {
+    const cachedGeotiff = tiffCache.get(geoTiffUrl);
+    if (cachedGeotiff.token == mspcSasToken)
+      return cachedGeotiff.geotiff;
+    else {
+      cachedGeotiff.geotiff = null;
+      tiffCache.delete(geoTiffUrl);
+    }
+  }
+
+  console.log("Raw asset href:", geoTiffUrl);
+  const href = `${geoTiffUrl}?${mspcSasToken}`;
   
-  const tiff = fromUrl(geoTiffUrl);
-  tiffCache.set(geoTiffUrl, tiff);
+  const tiff = fromUrl(href);
+  tiffCache.set(geoTiffUrl, {
+    geotiff: tiff, 
+    token: mspcSasToken} );
 
   return tiff;
 }
