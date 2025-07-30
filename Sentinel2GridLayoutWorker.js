@@ -7,6 +7,8 @@ const bboxCoverageThr = 1 - 1e-4;
 
 class STACCatalog {
   #stacCache = new Map();
+  #pendingQueries = [];
+  #batching = false;
 
   constructor() {
   }
@@ -14,9 +16,10 @@ class STACCatalog {
   async fetchLatestS2(topLeft, bottomRight) {
     let [stacItems, bboxIntersectionRatio] = this.findBestItem(topLeft, bottomRight);
 
-    if (bboxIntersectionRatio < bboxCoverageThr)
-      await this.updateCachedItems(topLeft, bottomRight);
+    for (let i = 0;bboxIntersectionRatio < bboxCoverageThr && i < 2; i++) {
+      await this.updateCachedItems(topLeft, bottomRight, i>0);
       [stacItems, bboxIntersectionRatio] = this.findBestItem(topLeft, bottomRight);
+    }
 
     if (bboxIntersectionRatio < bboxCoverageThr)
     {
@@ -30,8 +33,8 @@ class STACCatalog {
       return [null, false];
   }
 
-  async updateCachedItems(topLeft, bottomRight) {
-    const stacItems = await this.fetchLatestS2StacItems(topLeft, bottomRight);
+  async updateCachedItems(topLeft, bottomRight, disableBatching = false) {
+    const stacItems = await this.fetchLatestS2StacItems(topLeft, bottomRight, disableBatching);
     
     for (let i = 0; i < stacItems.length; i++)
     {
@@ -68,12 +71,6 @@ class STACCatalog {
     if (tilesIndexes.length == 0)
       return [null, 0];
 
-    // tilesIndexes.sort((a, b) => {
-    //   if (a.intersectRatio != b.intersectRatio)
-    //     return b.intersectRatio - a.intersectRatio;
-    //   return b.datetime - a.datetime;
-    // })
-
     tilesIndexes.sort((a, b) => {
       if (a.datetime != b.datetime)
         return b.datetime - a.datetime;
@@ -97,7 +94,47 @@ class STACCatalog {
     return [selectedStacItems, bboxIntersectionRatio];
   }
 
-  async fetchLatestS2StacItems(topLeft, bottomRight) {
+  async fetchLatestS2StacItems(topLeft, bottomRight, disableBatching = false) {
+    if (disableBatching)
+      return this.fetchLatestS2StacItemsInternal(topLeft, bottomRight);
+
+    return new Promise(resolve => {
+      this.#pendingQueries.push({
+        topLeft: topLeft,
+        bottomRight: bottomRight,
+        resolveFunc: resolve,
+      });
+
+      if (!this.#batching) {
+        this.#batching = true;
+
+        setTimeout(async () => {
+          const pendingQueriesBatch = this.#pendingQueries;
+          this.#pendingQueries = [];
+          this.#batching = false;
+
+          const topLeft = pendingQueriesBatch[0].topLeft;
+          const bottomRight = pendingQueriesBatch[0].bottomRight;
+
+          for (let query of pendingQueriesBatch) {
+            topLeft.lat = Math.max(topLeft.lat, query.topLeft.lat);
+            topLeft.lng = Math.min(topLeft.lng, query.topLeft.lng);
+            bottomRight.lat = Math.min(bottomRight.lat, query.bottomRight.lat);
+            bottomRight.lng = Math.max(bottomRight.lng, query.bottomRight.lng);
+          }
+
+          const stacItems = await this.fetchLatestS2StacItemsInternal(topLeft, bottomRight);
+
+          for (let query of pendingQueriesBatch)
+            query.resolveFunc(stacItems);
+        }, 50);
+      }
+    });
+  }
+
+  async fetchLatestS2StacItemsInternal(topLeft, bottomRight) {
+    const squareDegrees = Math.abs(topLeft.lat - bottomRight.lat) * Math.abs(topLeft.lng - bottomRight.lng);
+    const maxItems = Math.max(10, Math.min(100, Math.round(squareDegrees*20) ) );
     const body = {
       collections: ["sentinel-2-l2a"],
       bbox: [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat],
@@ -106,7 +143,7 @@ class STACCatalog {
           lt: 10, // Less than 10% cloud cover
         },
       },
-      limit: 20,
+      limit: maxItems,
       // sortby: "-properties.datetime",
       sortby: [{ field: 'datetime', direction: 'desc' }],
     };
