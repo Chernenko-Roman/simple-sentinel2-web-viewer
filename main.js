@@ -124,3 +124,4 @@ osmLayer.addTo(map);
 sentinel2Layer.addTo(map);
 
 L.control.layers(baseMaps, overlayMaps).addTo(map);
+L.control.scale().addTo(map);
