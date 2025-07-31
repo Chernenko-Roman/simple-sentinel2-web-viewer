@@ -125,3 +125,13 @@ sentinel2Layer.addTo(map);
 
 L.control.layers(baseMaps, overlayMaps).addTo(map);
 L.control.scale().addTo(map);
+
+map.on('zoomend', function() {
+  const zoominMsgDiv = document.getElementById('zoomin_msg');
+  
+  const currentZoom = map.getZoom();
+  if (currentZoom <= 7)
+    zoominMsgDiv.className = "zoomin_msg_enable";
+  else
+    zoominMsgDiv.className = "zoomin_msg_disable";
+});
