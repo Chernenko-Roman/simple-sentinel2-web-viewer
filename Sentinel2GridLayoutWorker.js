@@ -173,13 +173,18 @@ const cellRgbCache = new QuickLRU({ maxSize: 1000 });
 let mspcSasToken = null;
 
 async function updateMspcSasToken() {
-  const signResp = await fetch("https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a?write=false", {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const signResp = await fetch("https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a?write=false", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
 
-  const result = await signResp.json();
-  mspcSasToken = result.token;
+    const result = await signResp.json();
+    mspcSasToken = result.token;
+  } catch (error) {
+    setTimeout(updateMspcSasToken, 1000);
+    return;
+  }
 
   console.log("MSPC SAS token refreshed");
   setTimeout(updateMspcSasToken, 45 * 60 * 1000); // refresh every 50 min
@@ -213,54 +218,64 @@ async function createTile(pkg) {
   const controller = new AbortController();
   abortControllers.set(pkg.key, controller);
 
-  const [stacItems, fullCoverage] = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
+  try {
+    const [stacItems, fullCoverage] = await stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
 
-  const warpedImage = new ImageData(pkg.tileSize.x, pkg.tileSize.y);
-  for (const stacItem of stacItems) {
+    const warpedImage = new ImageData(pkg.tileSize.x, pkg.tileSize.y);
+    for (const stacItem of stacItems) {
+      if (controller.signal.aborted)
+      {
+        console.log("Abort after fetching stac item");
+        return;
+      }
+
+      const visualBand = stacItem.assets.visual.href;
+
+      const epsgCode = stacItem.properties["proj:epsg"];
+      const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
+
+      const cellCoordsUtm = pkg.cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
+      const tiff = await openGeoTiffFile(visualBand);
+
+      if (controller.signal.aborted)
+      {
+        console.log("Abort after opening geotiff file");
+        return;
+      }
+
+      await getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, controller.signal);
+    }
+
     if (controller.signal.aborted)
     {
-      console.log("Abort after fetching stac item");
+      console.log("Abort after getting cell RGB data");
       return;
     }
 
-    const visualBand = stacItem.assets.visual.href;
+    const cellRGB = await createImageBitmap(warpedImage);
 
-    const epsgCode = stacItem.properties["proj:epsg"];
-    const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
+    self.postMessage({
+        type: "done",
+        key: pkg.key,
+        error: null,
+        cellRGB: cellRGB,
+      });
 
-    const cellCoordsUtm = pkg.cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
-    const tiff = await openGeoTiffFile(visualBand);
-
-    if (controller.signal.aborted)
-    {
-      console.log("Abort after opening geotiff file");
-      return;
+    if (fullCoverage) {
+      const offscreen = new OffscreenCanvas(cellRGB.width, cellRGB.height);
+      const ctx = offscreen.getContext('2d');
+      ctx.drawImage(cellRGB, 0, 0);
+      const blob = await offscreen.convertToBlob({ type: 'image/png' });
+      cellRgbCache.set(pkg.key, blob);
     }
-
-    await getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, controller.signal);
-  }
-
-  if (controller.signal.aborted)
-  {
-    console.log("Abort after getting cell RGB data");
-    return;
-  }
-
-  const cellRGB = await createImageBitmap(warpedImage);
-
-  self.postMessage({
+  } catch (error) {
+    self.postMessage({
       type: "done",
       key: pkg.key,
-      cellRGB: cellRGB,
+      error: error,
+      cellRGB: null,
     });
-
-  if (fullCoverage) {
-    const offscreen = new OffscreenCanvas(cellRGB.width, cellRGB.height);
-    const ctx = offscreen.getContext('2d');
-    ctx.drawImage(cellRGB, 0, 0);
-    const blob = await offscreen.convertToBlob({ type: 'image/png' });
-    cellRgbCache.set(pkg.key, blob);
-  }
+  }   
 }
 
 function unloadTile(pkg) {

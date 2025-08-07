@@ -74,10 +74,15 @@ class Sentinel2GridLayer extends L.GridLayer {
       if (this.#tileInfo.has(pkg.key))
       {
         const currTile = this.#tileInfo.get(pkg.key);
-        const ctx = currTile.canvas.getContext("2d");
-        ctx.drawImage(pkg.cellRGB, 0, 0, currTile.tileSize.x, currTile.tileSize.y);
+        if (pkg.error == null) {
+          const ctx = currTile.canvas.getContext("2d");
+          ctx.drawImage(pkg.cellRGB, 0, 0, currTile.tileSize.x, currTile.tileSize.y);
 
-        currTile.doneCallback(null, currTile.canvas);
+          currTile.doneCallback(null, currTile.canvas);
+        } else {
+          currTile.doneCallback(pkg.error, currTile.canvas);
+        }
+
         this.#tileInfo.delete(pkg.key);
       }
     }
