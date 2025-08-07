@@ -36,3 +36,32 @@ html, body {
   font-size: 1.5rem;
   text-align: center;
 }
+
+#progress-bar-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 4px;
+  width: 100%;
+  background-color: transparent;
+  z-index: 10000;
+  display: none;
+}
+
+#progress-bar {
+  height: 100%;
+  width: 0%;
+  background-color: #3498db;
+  transition: width 0.3s ease;
+}
+
+/* Animated loading effect (loop) */
+@keyframes loadingLoop {
+  0%   { width: 0%; }
+  50%  { width: 70%; }
+  100% { width: 0%; }
+}
+
+#progress-bar.loading {
+  animation: loadingLoop 1.5s infinite;
+}

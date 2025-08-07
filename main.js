@@ -111,6 +111,11 @@ const sentinel2Layer = new Sentinel2GridLayer({
   attribution: "ESA Sentinel-2"
 });
 
+sentinel2Layer.on('tileloadstart', () => ProgressBar.tileRequested());
+sentinel2Layer.on('tileload', () => ProgressBar.tileLoaded());
+sentinel2Layer.on('tileerror', () => ProgressBar.tileLoaded());
+sentinel2Layer.on('loading', () =>  ProgressBar.reset());
+
 const baseMaps = {
   "OpenStreetMap": osmLayer,
   "Esri World Imagery": esriLayer,
@@ -135,8 +140,9 @@ map.on('zoomend', function() {
   const zoominMsgDiv = document.getElementById('zoomin_msg');
   
   const currentZoom = map.getZoom();
-  if (currentZoom <= 7)
+  if (currentZoom <= 7) {
     zoominMsgDiv.className = "zoomin_msg_enable";
-  else
+    ProgressBar.reset()
+  } else
     zoominMsgDiv.className = "zoomin_msg_disable";
 });
