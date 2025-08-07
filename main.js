@@ -89,6 +89,16 @@ class Sentinel2GridLayer extends L.GridLayer {
   }
 }
 
+function getInitialView() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    lat: parseFloat(params.get('lat')) || 49.4,
+    lng: parseFloat(params.get('lng')) || 32.05,
+    zoom: parseInt(params.get('z')) || 12
+  };
+}
+
+
 
 const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
@@ -125,9 +135,10 @@ const overlayMaps = {
   "ESA Sentinel-2": sentinel2Layer
 };
 
+const view = getInitialView();
 const map = L.map('map', {
-  center: [49.4, 32.05],
-  zoom: 12,
+  center: [view.lat, view.lng],
+  zoom: view.zoom,
 });
 
 osmLayer.addTo(map);
@@ -136,7 +147,7 @@ sentinel2Layer.addTo(map);
 L.control.layers(baseMaps, overlayMaps).addTo(map);
 L.control.scale().addTo(map);
 
-map.on('zoomend', function() {
+function onZoomChanged() {
   const zoominMsgDiv = document.getElementById('zoomin_msg');
   
   const currentZoom = map.getZoom();
@@ -145,4 +156,20 @@ map.on('zoomend', function() {
     ProgressBar.reset()
   } else
     zoominMsgDiv.className = "zoomin_msg_disable";
-});
+}
+
+function onMoveEnd() {
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  const params = new URLSearchParams();
+  params.set('lat', center.lat.toFixed(5));
+  params.set('lng', center.lng.toFixed(5));
+  params.set('z', zoom);
+  history.replaceState(null, '', '?' + params.toString());
+}
+
+map.on('zoomend', () => onZoomChanged());
+map.on('moveend', () => onMoveEnd() );
+
+onZoomChanged();
+onMoveEnd();
