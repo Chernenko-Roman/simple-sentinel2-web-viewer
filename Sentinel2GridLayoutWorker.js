@@ -36,12 +36,16 @@ class Sentinel2DataLoader {
   #abortControllers = new Map();
   #tiffPool = new Pool();
   #cellRgbCache = new QuickLRU({ maxSize: 1000 });
+  #cellDates = new Map();
+  #visibleCellKeys = new Set();
 
   constructor(maxCloudCoverage) {
     this.#stac = new STACCatalog(maxCloudCoverage)
   }
 
   async createTile(pkg) {
+    this.#visibleCellKeys.add(pkg.key);
+
     if (this.#cellRgbCache.has(pkg.key)) {
       self.postMessage({
         type: "done",
@@ -56,6 +60,15 @@ class Sentinel2DataLoader {
 
     try {
       const [stacItems, fullCoverage] = await this.#stac.fetchLatestS2(pkg.coordsTopLeft, pkg.coordsBottomRight);
+      let currentCellDates = [];
+      for (const stacItem of stacItems)
+        currentCellDates.push(stacItem.properties.datetime.split('T')[0]);
+      if (currentCellDates.length > 1)
+        currentCellDates = new Set(currentCellDates)
+      if (currentCellDates.length == 1)
+        currentCellDates = currentCellDates[0];
+
+      this.#cellDates.set(pkg.key, currentCellDates);
 
       const warpedImage = new ImageData(pkg.tileSize.x, pkg.tileSize.y);
       for (const stacItem of stacItems) {
@@ -115,6 +128,8 @@ class Sentinel2DataLoader {
   }
  
   unloadTile(pkg) {
+    this.#visibleCellKeys.delete(pkg.key);
+
     const controller = this.#abortControllers.get(pkg.key);
     if (controller) {
       controller.abort();
@@ -207,6 +222,25 @@ class Sentinel2DataLoader {
         dstOffset += 4;
       }
   }
+
+  getImagesDates() {
+    let imagesDates = new Set();
+    for (const currCellKey of this.#visibleCellKeys) {
+      if (!this.#cellDates.has(currCellKey))
+        continue;
+
+      const cellDates = this.#cellDates.get(currCellKey);
+      if (cellDates instanceof Set)
+        imagesDates = new Set([...imagesDates, ...cellDates]);
+      else
+        imagesDates.add(cellDates);
+    }
+
+    self.postMessage({
+      type: "getImagesDates",
+      imagesDates: imagesDates,
+    });
+  }
 }
 
 const sentinel2DataLoader = new Sentinel2DataLoader(10);
@@ -218,6 +252,9 @@ self.onmessage = (pkg) => {
       break;
     case "unloadTile":
       sentinel2DataLoader.unloadTile(pkg.data);
+      break;
+    case "getImagesDates":
+      sentinel2DataLoader.getImagesDates();
       break;
   }
 };

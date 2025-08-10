@@ -68,11 +68,15 @@ class Sentinel2GridLayer extends L.GridLayer {
     this.#tileInfo.delete(key);
   }
 
+  refreshImagesDatesInfo() {
+    this.#worker.postMessage({
+      type: "getImagesDates"
+    });
+  }
+
   handleWorkerMessage(pkg) {
-    if (pkg.type == "done")
-    {
-      if (this.#tileInfo.has(pkg.key))
-      {
+    if (pkg.type == "done") {
+      if (this.#tileInfo.has(pkg.key)) {
         const currTile = this.#tileInfo.get(pkg.key);
         if (pkg.error == null) {
           const ctx = currTile.canvas.getContext("2d");
@@ -86,6 +90,9 @@ class Sentinel2GridLayer extends L.GridLayer {
         this.#tileInfo.delete(pkg.key);
       }
     }
+    else if (pkg.type == "getImagesDates") {
+      console.log(pkg.imagesDates);
+    }
   }
 }
 
@@ -97,8 +104,6 @@ function getInitialView() {
     zoom: parseInt(params.get('z')) || 12
   };
 }
-
-
 
 const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
@@ -132,7 +137,7 @@ const baseMaps = {
 };
 
 const overlayMaps = {
-  "Latest cloudlesds ESA Sentinel-2": sentinel2LayerCloudless
+  "Latest cloudless ESA Sentinel-2": sentinel2LayerCloudless
 };
 
 const view = getInitialView();
@@ -166,6 +171,8 @@ function onMoveEnd() {
   params.set('lng', center.lng.toFixed(5));
   params.set('z', zoom);
   history.replaceState(null, '', '?' + params.toString());
+
+  sentinel2LayerCloudless.refreshImagesDatesInfo();
 }
 
 map.on('zoomend', () => onZoomChanged());
@@ -173,3 +180,6 @@ map.on('moveend', () => onMoveEnd() );
 
 onZoomChanged();
 onMoveEnd();
+
+sentinel2LayerCloudless.on('load', () => sentinel2LayerCloudless.refreshImagesDatesInfo());
+sentinel2LayerCloudless.on('load', () => ProgressBar.reset());
