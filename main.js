@@ -113,7 +113,7 @@ const esriLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/servi
 }
 )
 
-const sentinel2Layer = new Sentinel2GridLayer({
+const sentinel2LayerCloudless = new Sentinel2GridLayer({
   minZoom: 8,
   maxZoom: 16,
   minNativeZoom: 8,
@@ -121,10 +121,10 @@ const sentinel2Layer = new Sentinel2GridLayer({
   attribution: "ESA Sentinel-2"
 });
 
-sentinel2Layer.on('tileloadstart', () => ProgressBar.tileRequested());
-sentinel2Layer.on('tileload', () => ProgressBar.tileLoaded());
-sentinel2Layer.on('tileerror', () => ProgressBar.tileLoaded());
-sentinel2Layer.on('loading', () =>  ProgressBar.reset());
+sentinel2LayerCloudless.on('tileloadstart', () => ProgressBar.tileRequested());
+sentinel2LayerCloudless.on('tileload', () => ProgressBar.tileLoaded());
+sentinel2LayerCloudless.on('tileerror', () => ProgressBar.tileLoaded());
+sentinel2LayerCloudless.on('loading', () =>  ProgressBar.reset());
 
 const baseMaps = {
   "OpenStreetMap": osmLayer,
@@ -132,7 +132,7 @@ const baseMaps = {
 };
 
 const overlayMaps = {
-  "ESA Sentinel-2": sentinel2Layer
+  "Latest cloudlesds ESA Sentinel-2": sentinel2LayerCloudless
 };
 
 const view = getInitialView();
@@ -142,7 +142,7 @@ const map = L.map('map', {
 });
 
 osmLayer.addTo(map);
-sentinel2Layer.addTo(map);
+sentinel2LayerCloudless.addTo(map);
 
 L.control.layers(baseMaps, overlayMaps).addTo(map);
 L.control.scale().addTo(map);

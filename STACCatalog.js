@@ -6,8 +6,10 @@ export default class STACCatalog {
   #stacCache = new Map();
   #pendingQueries = [];
   #batching = false;
+  #maxCloudCoverage = null;
 
-  constructor() {
+  constructor(maxCloudCoverage = 10) {
+    this.#maxCloudCoverage = maxCloudCoverage;
   }
 
   async fetchLatestS2(topLeft, bottomRight) {
@@ -137,7 +139,7 @@ export default class STACCatalog {
       bbox: [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat],
       query: {
         "eo:cloud_cover": {
-          lt: 10, // Less than 10% cloud cover
+          lte: this.#maxCloudCoverage,
         },
       },
       limit: maxItems,

@@ -32,10 +32,14 @@ async function updateMspcSasToken() {
 
 class Sentinel2DataLoader {
   #tiffCache = new Map();
-  #stac = new STACCatalog();
+  #stac = null;
   #abortControllers = new Map();
   #tiffPool = new Pool();
   #cellRgbCache = new QuickLRU({ maxSize: 1000 });
+
+  constructor(maxCloudCoverage) {
+    this.#stac = new STACCatalog(maxCloudCoverage)
+  }
 
   async createTile(pkg) {
     if (this.#cellRgbCache.has(pkg.key)) {
@@ -205,7 +209,7 @@ class Sentinel2DataLoader {
   }
 }
 
-const sentinel2DataLoader = new Sentinel2DataLoader();
+const sentinel2DataLoader = new Sentinel2DataLoader(10);
 
 self.onmessage = (pkg) => {
   switch (pkg.data.type) {
