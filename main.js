@@ -91,7 +91,17 @@ class Sentinel2GridLayer extends L.GridLayer {
       }
     }
     else if (pkg.type == "getImagesDates") {
-      console.log(pkg.imagesDates);
+      if (pkg.imagesDates.size > 0) {
+        const imagesDates = Array.from(pkg.imagesDates).sort((a, b) => b.localeCompare(a));
+        let imagesDatesStr = "";
+        if (imagesDates.length <= 3)
+          imagesDatesStr = imagesDates.join(", ");
+        else 
+          imagesDatesStr = `${imagesDates.at(-1)} – ${imagesDates[0]}`;
+
+        console.log(imagesDatesStr);
+        this.fire("imagesDatesUpdated", {"dates": imagesDatesStr});
+      }
     }
   }
 }
@@ -183,3 +193,20 @@ onMoveEnd();
 
 sentinel2LayerCloudless.on('load', () => sentinel2LayerCloudless.refreshImagesDatesInfo());
 sentinel2LayerCloudless.on('load', () => ProgressBar.reset());
+
+// Create custom control
+const LayerInfoControl = L.Control.extend({
+  options: { position: 'bottomright' }, // same as attribution
+  onAdd: function () {
+    const div = L.DomUtil.create('div', 'leaflet-control-attribution');
+    div.id = 'layer-info';
+    div.innerHTML = '';
+    return div;
+  }
+});
+
+map.addControl(new LayerInfoControl());
+
+sentinel2LayerCloudless.on("imagesDatesUpdated", function(newDates) {
+  document.getElementById('layer-info').innerHTML =`Acquisition dates: ${newDates.dates}`;
+} );

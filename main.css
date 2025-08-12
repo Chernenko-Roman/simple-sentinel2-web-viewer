@@ -65,3 +65,26 @@ html, body {
 #progress-bar.loading {
   animation: loadingLoop 1.5s infinite;
 }
+
+.layer-info-control {
+  background: none;
+  padding-left: 10px;
+  color: #333;
+  font-size: 11px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* .leaflet-bottom.leaflet-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.leaflet-control-attribution {
+  order: 1; 
+}
+
+.layer-info-control {
+  order: 2; 
+} */
