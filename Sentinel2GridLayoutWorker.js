@@ -28,6 +28,32 @@ async function updateMspcSasToken() {
   await updateMspcSasToken();
 })();
 
+function withRetry(fn, retries = 3, delay = 500) {
+  return async function(...args) {
+    let attempt = 0;
+    let lastError;
+    while (attempt < retries) {
+      try {
+        return await fn(...args);
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          console.log("AbortError")
+          throw err;
+        }
+
+        lastError = err;
+        attempt++;
+        if (attempt < retries) {
+          console.log(`withRetry retry ${err.name} ${attempt} ${retries}`);
+          await new Promise(r => setTimeout(r, delay));
+          delay *= 2; // optional exponential backoff
+        }
+      }
+    }
+    console.log(`withRetry failed ${lastError.name}`);
+    throw lastError;
+  };
+}
 
 
 class Sentinel2DataLoader {
@@ -153,7 +179,7 @@ class Sentinel2DataLoader {
     console.log("Raw asset href:", geoTiffUrl);
     const href = `${geoTiffUrl}?${mspcSasToken}`;
     
-    const tiff = fromUrl(href);
+    const tiff = withRetry(fromUrl)(href);
     this.#tiffCache.set(geoTiffUrl, {
       geotiff: tiff, 
       token: mspcSasToken} );
@@ -163,7 +189,7 @@ class Sentinel2DataLoader {
 
   async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
-    const cellRGB = await tiff.readRasters({
+    const cellRGB = await withRetry(tiff.readRasters.bind(tiff))({
       pool: this.#tiffPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
