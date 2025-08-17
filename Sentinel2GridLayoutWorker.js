@@ -3,6 +3,7 @@ import proj4 from 'https://esm.sh/proj4';
 import * as turf from 'https://esm.sh/@turf/turf@7';
 import QuickLRU from 'https://esm.sh/quick-lru';
 import STACCatalog from './STACCatalog.js';
+import { LayerType } from './LayerType.js';
 
 let mspcSasToken = null;
 
@@ -64,9 +65,13 @@ class Sentinel2DataLoader {
   #cellRgbCache = new QuickLRU({ maxSize: 1000 });
   #cellDates = new Map();
   #visibleCellKeys = new Set();
+  #layerType = null;
 
-  constructor(maxCloudCoverage) {
+  
+
+  constructor(maxCloudCoverage, layerType) {
     this.#stac = new STACCatalog(maxCloudCoverage)
+    this.#layerType = layerType;
   }
 
   async createTile(pkg) {
@@ -74,6 +79,7 @@ class Sentinel2DataLoader {
 
     if (this.#cellRgbCache.has(pkg.key)) {
       self.postMessage({
+        layerType: this.#layerType,
         type: "done",
         key: pkg.key,
         cellRGB: await createImageBitmap(this.#cellRgbCache.get(pkg.key)),
@@ -130,6 +136,7 @@ class Sentinel2DataLoader {
       const cellRGB = await createImageBitmap(warpedImage);
 
       self.postMessage({
+          layerType: this.#layerType,
           type: "done",
           key: pkg.key,
           error: null,
@@ -145,6 +152,7 @@ class Sentinel2DataLoader {
       }
     } catch (error) {
       self.postMessage({
+        layerType: this.#layerType,
         type: "done",
         key: pkg.key,
         error: error,
@@ -263,24 +271,34 @@ class Sentinel2DataLoader {
     }
 
     self.postMessage({
+      layerType: this.#layerType,
       type: "getImagesDates",
       imagesDates: imagesDates,
     });
   }
 }
 
-const sentinel2DataLoader = new Sentinel2DataLoader(10);
+const layerDataLoaders = new Map([
+  [LayerType.Sentinel2RgbCloudless, new Sentinel2DataLoader(10, LayerType.Sentinel2RgbCloudless)],
+  [LayerType.Sentinel2RgbLatest, new Sentinel2DataLoader(100, LayerType.Sentinel2RgbLatest)],
+]);
 
 self.onmessage = (pkg) => {
+  if (!layerDataLoaders.has(pkg.data.layerType))
+  {
+    console.log(`Unknown layerType=${pkg.data.layerType} in pkg`);
+    return;
+  }
+  const dataLoader = layerDataLoaders.get(pkg.data.layerType);
   switch (pkg.data.type) {
     case "createTile":
-      sentinel2DataLoader.createTile(pkg.data);
+      dataLoader.createTile(pkg.data);
       break;
     case "unloadTile":
-      sentinel2DataLoader.unloadTile(pkg.data);
+      dataLoader.unloadTile(pkg.data);
       break;
     case "getImagesDates":
-      sentinel2DataLoader.getImagesDates();
+      dataLoader.getImagesDates();
       break;
   }
 };

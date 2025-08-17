@@ -1,14 +1,17 @@
-class Sentinel2GridLayer extends L.GridLayer {
-  #worker = new Worker("Sentinel2GridLayoutWorker.js", { type: 'module' });
-  #tileInfo = new Map();
+import { LayerType } from './LayerType.js';
 
-  constructor(options) {
+class Sentinel2GridLayer extends L.GridLayer {
+  #worker = null;
+  #tileInfo = new Map();
+  #layerType = null;
+
+  constructor(options, worker, layerType) {
     super(options);
 
-    this.#worker.onmessage = (pkg) => {
-      this.handleWorkerMessage(pkg.data);
-    };
+    this.#worker = worker;
+    this.#layerType = layerType;
 
+    this.#worker.addEventListener("message", (pkg) => this.handleWorkerMessage(pkg.data));
     this.on('tileunload', e => {
       console.log('Tile unloaded:', e.coords);
       this.unloadTile(e.coords);
@@ -46,6 +49,7 @@ class Sentinel2GridLayer extends L.GridLayer {
     });
 
     this.#worker.postMessage({
+      layerType: this.#layerType,
       type: "createTile",
       key: key,
       coords: coords,
@@ -61,6 +65,7 @@ class Sentinel2GridLayer extends L.GridLayer {
   unloadTile(coords) {
     const key = `${coords.z}/${coords.x}/${coords.y}`;
     this.#worker.postMessage({
+      layerType: this.#layerType,
       type: "unloadTile",
       key: key,
       coords: coords
@@ -70,11 +75,15 @@ class Sentinel2GridLayer extends L.GridLayer {
 
   refreshImagesDatesInfo() {
     this.#worker.postMessage({
+      layerType: this.#layerType,
       type: "getImagesDates"
     });
   }
 
   handleWorkerMessage(pkg) {
+    if (pkg.layerType != this.#layerType)
+      return;
+
     if (pkg.type == "done") {
       if (this.#tileInfo.has(pkg.key)) {
         const currTile = this.#tileInfo.get(pkg.key);
@@ -128,13 +137,30 @@ const esriLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/servi
 }
 )
 
-const sentinel2LayerCloudless = new Sentinel2GridLayer({
+const worker = new Worker("Sentinel2GridLayoutWorker.js", { type: 'module' });
+
+const sentinel2LayerRgbCloudless = new Sentinel2GridLayer({
   minZoom: 8,
   maxZoom: 16,
   minNativeZoom: 8,
   maxNativeZoom: 14,
-  attribution: "ESA Sentinel-2"
-});
+  attribution: "ESA Sentinel-2"}, 
+  worker, LayerType.Sentinel2RgbCloudless);
+
+const sentinel2LayerRgbLatest = new Sentinel2GridLayer({
+  minZoom: 8,
+  maxZoom: 16,
+  minNativeZoom: 8,
+  maxNativeZoom: 14,
+  attribution: "ESA Sentinel-2"}, 
+  worker, LayerType.Sentinel2RgbLatest);
+
+const sentinel2Layers = new Map([
+  [LayerType.Sentinel2RgbCloudless, sentinel2LayerRgbCloudless],
+  [LayerType.Sentinel2RgbLatest, sentinel2LayerRgbLatest],
+]);
+
+const sentinel2LayerCloudless = sentinel2LayerRgbCloudless;
 
 sentinel2LayerCloudless.on('tileloadstart', () => ProgressBar.tileRequested());
 sentinel2LayerCloudless.on('tileload', () => ProgressBar.tileLoaded());
@@ -147,7 +173,8 @@ const baseMaps = {
 };
 
 const overlayMaps = {
-  "Latest cloudless ESA Sentinel-2": sentinel2LayerCloudless
+  "Latest cloudless ESA Sentinel-2": sentinel2Layers.get(LayerType.Sentinel2RgbCloudless),
+  "Latest ESA Sentinel-2": sentinel2Layers.get(LayerType.Sentinel2RgbLatest),
 };
 
 const view = getInitialView();
