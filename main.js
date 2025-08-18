@@ -1,119 +1,5 @@
 import { LayerType } from './LayerType.js';
-
-class Sentinel2GridLayer extends L.GridLayer {
-  #worker = null;
-  #tileInfo = new Map();
-  #layerType = null;
-
-  constructor(options, worker, layerType) {
-    super(options);
-
-    this.#worker = worker;
-    this.#layerType = layerType;
-
-    this.#worker.addEventListener("message", (pkg) => this.handleWorkerMessage(pkg.data));
-    this.on('tileunload', e => {
-      console.log('Tile unloaded:', e.coords);
-      this.unloadTile(e.coords);
-    });
-  }
-
-  createTile(coords, done) {
-    console.log(`Start loading x = ${coords.x} y = ${coords.y} z = ${coords.z}`);
-
-    const key = `${coords.z}/${coords.x}/${coords.y}`;
-
-    const tile = document.createElement("canvas");
-    const tileSize = this.getTileSize();
-    tile.width = tileSize.x;
-    tile.height = tileSize.y;
-
-    const coordsTopLeft = map.unproject(
-      [coords.x * tileSize.x, coords.y * tileSize.y], coords.z
-    );
-    const coordsBottomRight = map.unproject(
-      [(coords.x + 1) * tileSize.x, (coords.y + 1) * tileSize.y], coords.z
-    );
-
-    const cellCoords = [
-      [coordsTopLeft.lng, coordsTopLeft.lat],
-      [coordsBottomRight.lng, coordsTopLeft.lat],
-      [coordsBottomRight.lng, coordsBottomRight.lat],
-      [coordsTopLeft.lng, coordsBottomRight.lat],
-    ];
-
-    this.#tileInfo.set(key, {
-      canvas: tile,
-      tileSize: tileSize,
-      doneCallback: done,
-    });
-
-    this.#worker.postMessage({
-      layerType: this.#layerType,
-      type: "createTile",
-      key: key,
-      coords: coords,
-      coordsTopLeft: coordsTopLeft,
-      coordsBottomRight: coordsBottomRight,
-      cellCoords: cellCoords,
-      tileSize: tileSize,
-    });
-
-    return tile;
-  }
-
-  unloadTile(coords) {
-    const key = `${coords.z}/${coords.x}/${coords.y}`;
-    this.#worker.postMessage({
-      layerType: this.#layerType,
-      type: "unloadTile",
-      key: key,
-      coords: coords
-    });
-    this.#tileInfo.delete(key);
-  }
-
-  refreshImagesDatesInfo() {
-    this.#worker.postMessage({
-      layerType: this.#layerType,
-      type: "getImagesDates"
-    });
-  }
-
-  handleWorkerMessage(pkg) {
-    if (pkg.layerType != this.#layerType)
-      return;
-
-    if (pkg.type == "done") {
-      if (this.#tileInfo.has(pkg.key)) {
-        const currTile = this.#tileInfo.get(pkg.key);
-        if (pkg.error == null) {
-          const ctx = currTile.canvas.getContext("2d");
-          ctx.drawImage(pkg.cellRGB, 0, 0, currTile.tileSize.x, currTile.tileSize.y);
-
-          currTile.doneCallback(null, currTile.canvas);
-        } else {
-          currTile.doneCallback(pkg.error, currTile.canvas);
-        }
-
-        this.#tileInfo.delete(pkg.key);
-      }
-    }
-    else if (pkg.type == "getImagesDates") {
-      if (pkg.imagesDates.size > 0) {
-        const imagesDates = Array.from(pkg.imagesDates).sort((a, b) => b.localeCompare(a));
-        let imagesDatesStr = "";
-        if (imagesDates.length <= 3)
-          imagesDatesStr = imagesDates.join(", ");
-        else 
-          imagesDatesStr = `${imagesDates.at(-1)} – ${imagesDates[0]}`;
-
-        console.log(imagesDatesStr);
-        this.fire("imagesDatesUpdated", {"dates": imagesDatesStr});
-      }
-    }
-  }
-}
+import { Sentinel2GridLayer } from './Sentinel2GridLayer.js';
 
 function getInitialView() {
   const params = new URLSearchParams(window.location.search);
@@ -128,14 +14,13 @@ const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution:
     '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-})
+});
 
 const esriLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
   maxZoom: 19,
   attribution:
     "Tiles &copy; Esri — Source: Esri, Earthstar Geographics"
-}
-)
+});
 
 const worker = new Worker("Sentinel2GridLayoutWorker.js", { type: 'module' });
 
@@ -160,12 +45,19 @@ const sentinel2Layers = new Map([
   [LayerType.Sentinel2RgbLatest, sentinel2LayerRgbLatest],
 ]);
 
-const sentinel2LayerCloudless = sentinel2LayerRgbCloudless;
+for (const [LayerType, layer] of sentinel2Layers) {
+  layer.on('tileloadstart', () => ProgressBar.tileRequested());
+  layer.on('tileload', () => ProgressBar.tileLoaded());
+  layer.on('tileerror', () => ProgressBar.tileLoaded());
+  layer.on('loading', () =>  ProgressBar.reset());
 
-sentinel2LayerCloudless.on('tileloadstart', () => ProgressBar.tileRequested());
-sentinel2LayerCloudless.on('tileload', () => ProgressBar.tileLoaded());
-sentinel2LayerCloudless.on('tileerror', () => ProgressBar.tileLoaded());
-sentinel2LayerCloudless.on('loading', () =>  ProgressBar.reset());
+  layer.on('load', () => layer.refreshImagesDatesInfo());
+  layer.on('load', () => ProgressBar.reset());
+
+  layer.on("imagesDatesUpdated", function(newDates) {
+    document.getElementById('layer-info').innerHTML =`Acquisition dates: ${newDates.dates}`;
+  } );
+}
 
 const baseMaps = {
     "OpenStreetMap": osmLayer,
@@ -180,6 +72,8 @@ const overlayMaps = {
   }
 };
 
+let currentOverlayLayer = null;
+
 const view = getInitialView();
 const map = L.map('map', {
   center: [view.lat, view.lng],
@@ -187,7 +81,7 @@ const map = L.map('map', {
 });
 
 osmLayer.addTo(map);
-sentinel2LayerCloudless.addTo(map);
+sentinel2Layers.get(LayerType.Sentinel2RgbCloudless).addTo(map);
 
 L.control.groupedLayers(
   baseMaps, overlayMaps,
@@ -217,7 +111,8 @@ function onMoveEnd() {
   params.set('z', zoom);
   history.replaceState(null, '', '?' + params.toString());
 
-  sentinel2LayerCloudless.refreshImagesDatesInfo();
+  if (currentOverlayLayer != null)
+    currentOverlayLayer.refreshImagesDatesInfo();
 }
 
 map.on('zoomend', () => onZoomChanged());
@@ -225,9 +120,6 @@ map.on('moveend', () => onMoveEnd() );
 
 onZoomChanged();
 onMoveEnd();
-
-sentinel2LayerCloudless.on('load', () => sentinel2LayerCloudless.refreshImagesDatesInfo());
-sentinel2LayerCloudless.on('load', () => ProgressBar.reset());
 
 // Create custom control
 const LayerInfoControl = L.Control.extend({
@@ -242,9 +134,9 @@ const LayerInfoControl = L.Control.extend({
 
 map.addControl(new LayerInfoControl());
 
-sentinel2LayerCloudless.on("imagesDatesUpdated", function(newDates) {
-  document.getElementById('layer-info').innerHTML =`Acquisition dates: ${newDates.dates}`;
-} );
-
 map.on('overlayadd', function(e) {
+  if (e.layer instanceof Sentinel2GridLayer)
+    currentOverlayLayer = e.layer;
+  else
+    currentOverlayLayer = null;
 });
