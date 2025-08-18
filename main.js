@@ -168,13 +168,16 @@ sentinel2LayerCloudless.on('tileerror', () => ProgressBar.tileLoaded());
 sentinel2LayerCloudless.on('loading', () =>  ProgressBar.reset());
 
 const baseMaps = {
-  "OpenStreetMap": osmLayer,
-  "Esri World Imagery": esriLayer,
+    "OpenStreetMap": osmLayer,
+    "Esri World Imagery": esriLayer
 };
 
 const overlayMaps = {
-  "Latest cloudless ESA Sentinel-2": sentinel2Layers.get(LayerType.Sentinel2RgbCloudless),
-  "Latest ESA Sentinel-2": sentinel2Layers.get(LayerType.Sentinel2RgbLatest),
+  "ESA Sentinel-2": {
+    "Latest cloudless": sentinel2Layers.get(LayerType.Sentinel2RgbCloudless),
+    "Latest": sentinel2Layers.get(LayerType.Sentinel2RgbLatest),
+    "Disable": L.layerGroup(),
+  }
 };
 
 const view = getInitialView();
@@ -186,7 +189,12 @@ const map = L.map('map', {
 osmLayer.addTo(map);
 sentinel2LayerCloudless.addTo(map);
 
-L.control.layers(baseMaps, overlayMaps).addTo(map);
+L.control.groupedLayers(
+  baseMaps, overlayMaps,
+  {
+    exclusiveGroups: ["ESA Sentinel-2"]  // makes this overlay group radio-style
+  }
+).addTo(map);
 L.control.scale().addTo(map);
 
 function onZoomChanged() {
@@ -237,3 +245,6 @@ map.addControl(new LayerInfoControl());
 sentinel2LayerCloudless.on("imagesDatesUpdated", function(newDates) {
   document.getElementById('layer-info').innerHTML =`Acquisition dates: ${newDates.dates}`;
 } );
+
+map.on('overlayadd', function(e) {
+});

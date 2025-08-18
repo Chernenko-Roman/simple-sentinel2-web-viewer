@@ -74,17 +74,3 @@ html, body {
   display: inline-block;
   vertical-align: middle;
 }
-
-/* .leaflet-bottom.leaflet-right {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-}
-
-.leaflet-control-attribution {
-  order: 1; 
-}
-
-.layer-info-control {
-  order: 2; 
-} */
