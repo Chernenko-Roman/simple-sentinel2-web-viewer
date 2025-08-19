@@ -1,6 +1,6 @@
 import { fromUrl, Pool } from 'https://esm.sh/geotiff';
 import proj4 from 'https://esm.sh/proj4';
-import * as turf from 'https://esm.sh/@turf/turf@7';
+import * as turf from 'https://esm.sh/@turf/turf@7/turf.min.js';
 import QuickLRU from 'https://esm.sh/quick-lru';
 import STACCatalog from './STACCatalog.js';
 import { LayerType } from './LayerType.js';

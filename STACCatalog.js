@@ -1,4 +1,4 @@
-import * as turf from 'https://esm.sh/@turf/turf@7';
+import * as turf from 'https://esm.sh/@turf/turf@7/turf.min.js';
 
 const bboxCoverageThr = 1 - 1e-4;
 
