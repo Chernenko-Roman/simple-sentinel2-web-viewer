@@ -1,4 +1,4 @@
-import { LayerType } from './LayerType.js';
+import { LayerType, BackgroundType } from './LayerType.js';
 import { Sentinel2GridLayer } from './Sentinel2GridLayer.js';
 
 function getInitialView() {
@@ -6,7 +6,9 @@ function getInitialView() {
   return {
     lat: parseFloat(params.get('lat')) || 49.4,
     lng: parseFloat(params.get('lng')) || 32.05,
-    zoom: parseInt(params.get('z')) || 12
+    zoom: parseInt(params.get('z')) || 12,
+    background: params.get("background") || "openstreetmap",
+    overlay: params.get("overlay") || "Sentinel2RgbCloudless",
   };
 }
 
@@ -15,12 +17,19 @@ const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution:
     '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 });
+osmLayer._layerId = BackgroundType.openstreetmap;
 
 const esriLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
   maxZoom: 19,
   attribution:
     "Tiles &copy; Esri — Source: Esri, Earthstar Geographics"
 });
+esriLayer._layerId = BackgroundType.esri;
+
+const backgroundLayers = new Map([
+  [BackgroundType.openstreetmap, osmLayer],
+  [BackgroundType.esri, esriLayer],
+]);
 
 const worker = new Worker("Sentinel2GridLayoutWorker.js", { type: 'module' });
 
@@ -73,6 +82,7 @@ const overlayMaps = {
 };
 
 let currentOverlayLayer = null;
+let currentBackgroundLayer = null;
 
 const view = getInitialView();
 const map = L.map('map', {
@@ -80,8 +90,14 @@ const map = L.map('map', {
   zoom: view.zoom,
 });
 
-osmLayer.addTo(map);
-sentinel2Layers.get(LayerType.Sentinel2RgbCloudless).addTo(map);
+if (backgroundLayers.has(view.background)) {
+  currentBackgroundLayer = backgroundLayers.get(view.background);
+  currentBackgroundLayer.addTo(map);
+}
+if (sentinel2Layers.has(view.overlay)) {
+  currentOverlayLayer = sentinel2Layers.get(view.overlay);
+  currentOverlayLayer.addTo(map);
+}
 
 L.control.groupedLayers(
   baseMaps, overlayMaps,
@@ -97,7 +113,7 @@ function onZoomChanged() {
   const currentZoom = map.getZoom();
   if (currentZoom <= 7) {
     zoominMsgDiv.className = "zoomin_msg_enable";
-    ProgressBar.reset()
+    ProgressBar.reset();
   } else
     zoominMsgDiv.className = "zoomin_msg_disable";
 }
@@ -106,9 +122,12 @@ function onMoveEnd() {
   const center = map.getCenter();
   const zoom = map.getZoom();
   const params = new URLSearchParams();
+
   params.set('lat', center.lat.toFixed(5));
   params.set('lng', center.lng.toFixed(5));
   params.set('z', zoom);
+  params.set("background", currentBackgroundLayer?._layerId ?? "none");
+  params.set("overlay", currentOverlayLayer?._layerId ?? "none");
   history.replaceState(null, '', '?' + params.toString());
 
   if (currentOverlayLayer != null)
@@ -139,9 +158,14 @@ map.on('overlayadd', function(e) {
     currentOverlayLayer = e.layer;
   else
     currentOverlayLayer = null;
+
+  onMoveEnd();
 });
 
-L.control.locate({
-  
-})
-.addTo(map);
+map.on('baselayerchange', function(e) {
+  currentBackgroundLayer = e.layer;
+
+  onMoveEnd();
+});
+
+L.control.locate({}).addTo(map);

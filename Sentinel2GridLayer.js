@@ -1,13 +1,13 @@
 export class Sentinel2GridLayer extends L.GridLayer {
   #worker = null;
   #tileInfo = new Map();
-  #layerType = null;
+  _layerId = null;
 
   constructor(options, worker, layerType) {
     super(options);
 
     this.#worker = worker;
-    this.#layerType = layerType;
+    this._layerId = layerType;
 
     this.#worker.addEventListener("message", (pkg) => this.handleWorkerMessage(pkg.data));
     this.on('tileunload', e => {
@@ -47,7 +47,7 @@ export class Sentinel2GridLayer extends L.GridLayer {
     });
 
     this.#worker.postMessage({
-      layerType: this.#layerType,
+      layerType: this._layerId,
       type: "createTile",
       key: key,
       coords: coords,
@@ -63,7 +63,7 @@ export class Sentinel2GridLayer extends L.GridLayer {
   unloadTile(coords) {
     const key = `${coords.z}/${coords.x}/${coords.y}`;
     this.#worker.postMessage({
-      layerType: this.#layerType,
+      layerType: this._layerId,
       type: "unloadTile",
       key: key,
       coords: coords
@@ -73,13 +73,13 @@ export class Sentinel2GridLayer extends L.GridLayer {
 
   refreshImagesDatesInfo() {
     this.#worker.postMessage({
-      layerType: this.#layerType,
+      layerType: this._layerId,
       type: "getImagesDates"
     });
   }
 
   handleWorkerMessage(pkg) {
-    if (pkg.layerType != this.#layerType)
+    if (pkg.layerType != this._layerId)
       return;
 
     if (pkg.type == "done") {
