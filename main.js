@@ -140,3 +140,8 @@ map.on('overlayadd', function(e) {
   else
     currentOverlayLayer = null;
 });
+
+L.control.locate({
+  
+})
+.addTo(map);
