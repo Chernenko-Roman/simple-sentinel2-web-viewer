@@ -177,7 +177,7 @@ var info = L.control({position: 'bottomright'}); // or 'bottomright'
 
 info.onAdd = function(map) {
     var div = L.DomUtil.create('div', 'leaflet-control-attribution');
-    div.innerHTML = `© 2025 My Website | <a href="https://www.linkedin.com/in/roman-chernenko-b272a361/" target="_blank">
+    div.innerHTML = `© 2025 lookfrom.space | <a href="https://www.linkedin.com/in/roman-chernenko-b272a361/" target="_blank">
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" 
          fill="currentColor" viewBox="0 0 16 16" 
          style="vertical-align: middle; margin-right: 4px;">
