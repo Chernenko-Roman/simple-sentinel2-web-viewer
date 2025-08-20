@@ -4,11 +4,12 @@ import { Sentinel2GridLayer } from './Sentinel2GridLayer.js';
 function getInitialView() {
   const params = new URLSearchParams(window.location.search);
   return {
-    lat: parseFloat(params.get('lat')) || 49.4,
-    lng: parseFloat(params.get('lng')) || 32.05,
-    zoom: parseInt(params.get('z')) || 12,
+    lat: parseFloat(params.get('lat')) || 0,
+    lng: parseFloat(params.get('lng')) || 0,
+    zoom: parseInt(params.get('z')) || 2,
     background: params.get("background") || "openstreetmap",
     overlay: params.get("overlay") || "Sentinel2RgbCloudless",
+    unknownPosition: !params.has('lat') && !params.has('lng'),
   };
 }
 
@@ -168,7 +169,9 @@ map.on('baselayerchange', function(e) {
   onMoveEnd();
 });
 
-L.control.locate({}).addTo(map);
+L.control.locate({
+  initialZoomLevel: 10
+}).addTo(map);
 
 var info = L.control({position: 'bottomright'}); // or 'bottomright'
 
