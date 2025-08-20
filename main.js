@@ -91,6 +91,16 @@ const map = L.map('map', {
   zoom: view.zoom,
 });
 
+if (view.unknownPosition) {
+  // fetch('/geo')
+  fetch("https://simple-sentinel2-web-viewer.pages.dev/geo")
+    .then(response => response.json())
+    .then(data => {
+        map.setView([data.latitude, data.longitude], 13); 
+    })
+    .catch(err => console.error('Failed to fetch geo:', err));
+}
+
 if (backgroundLayers.has(view.background)) {
   currentBackgroundLayer = backgroundLayers.get(view.background);
   currentBackgroundLayer.addTo(map);
