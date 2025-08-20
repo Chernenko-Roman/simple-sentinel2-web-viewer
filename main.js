@@ -92,8 +92,7 @@ const map = L.map('map', {
 });
 
 if (view.unknownPosition) {
-  // fetch('/geo')
-  fetch("https://simple-sentinel2-web-viewer.pages.dev/geo")
+   fetch('/geo')
     .then(response => response.json())
     .then(data => {
         map.setView([data.latitude, data.longitude], 12); 
