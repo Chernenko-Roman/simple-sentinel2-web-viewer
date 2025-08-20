@@ -96,7 +96,7 @@ if (view.unknownPosition) {
   fetch("https://simple-sentinel2-web-viewer.pages.dev/geo")
     .then(response => response.json())
     .then(data => {
-        map.setView([data.latitude, data.longitude], 13); 
+        map.setView([data.latitude, data.longitude], 12); 
     })
     .catch(err => console.error('Failed to fetch geo:', err));
 }
