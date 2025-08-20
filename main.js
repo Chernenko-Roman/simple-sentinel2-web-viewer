@@ -169,3 +169,29 @@ map.on('baselayerchange', function(e) {
 });
 
 L.control.locate({}).addTo(map);
+
+var info = L.control({position: 'bottomright'}); // or 'bottomright'
+
+info.onAdd = function(map) {
+    var div = L.DomUtil.create('div', 'leaflet-control-attribution');
+    div.innerHTML = `© 2025 My Website | <a href="https://www.linkedin.com/in/roman-chernenko-b272a361/" target="_blank">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" 
+         fill="currentColor" viewBox="0 0 16 16" 
+         style="vertical-align: middle; margin-right: 4px;">
+      <path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 
+      0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 
+      1.146H1.175C.526 16 0 15.487 0 
+      14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.21c.837 
+      0 1.358-.554 1.358-1.248-.015-.709-.521-1.248-1.342-1.248-.82 
+      0-1.358.54-1.358 1.248 0 .694.521 
+      1.248 1.327 1.248h.015zM13.458 
+      13.394v-4.042c0-2.163-1.152-3.17-2.688-3.17-1.237 
+      0-1.796.68-2.105 1.157h-.03V6.169H6.234c.03.68 
+      0 7.225 0 7.225h2.401v-4.037c0-.216.015-.432.08-.586.174-.432.572-.878 
+      1.24-.878.874 0 1.223.662 1.223 1.634v3.867h2.28z"/>
+    </svg>
+    Roman Chernenko
+  </a>`;
+    return div;
+};
+info.addTo(map);
