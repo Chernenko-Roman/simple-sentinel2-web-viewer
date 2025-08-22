@@ -57,7 +57,7 @@ function withRetry(fn, retries = 3, delay = 500) {
 }
 
 
-class Sentinel2DataLoader {
+class Sentinel2RgbDataLoader {
   #tiffCache = new Map();
   #stac = null;
   #abortControllers = new Map();
@@ -280,9 +280,14 @@ class Sentinel2DataLoader {
   }
 }
 
+class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
+  
+}
+
 const layerDataLoaders = new Map([
-  [LayerType.Sentinel2RgbCloudless, new Sentinel2DataLoader(10, LayerType.Sentinel2RgbCloudless)],
-  [LayerType.Sentinel2RgbLatest, new Sentinel2DataLoader(100, LayerType.Sentinel2RgbLatest)],
+  [LayerType.Sentinel2RgbCloudless, new Sentinel2RgbDataLoader(10, LayerType.Sentinel2RgbCloudless)],
+  [LayerType.Sentinel2RgbLatest, new Sentinel2RgbDataLoader(100, LayerType.Sentinel2RgbLatest)],
+  [LayerType.Sentinel2NdviCloudless, new Sentinel2NdviDataLoader(10, LayerType.Sentinel2NdviCloudless)],
 ]);
 
 self.onmessage = (pkg) => {

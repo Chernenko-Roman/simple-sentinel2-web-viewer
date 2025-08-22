@@ -50,9 +50,18 @@ const sentinel2LayerRgbLatest = new Sentinel2GridLayer({
   attribution: "ESA Sentinel-2"}, 
   worker, LayerType.Sentinel2RgbLatest);
 
+const sentinel2LayerNdviCloudless = new Sentinel2GridLayer({
+  minZoom: 8,
+  maxZoom: 16,
+  minNativeZoom: 8,
+  maxNativeZoom: 14,
+  attribution: "ESA Sentinel-2"}, 
+  worker, LayerType.Sentinel2NdviCloudless);
+
 const sentinel2Layers = new Map([
   [LayerType.Sentinel2RgbCloudless, sentinel2LayerRgbCloudless],
   [LayerType.Sentinel2RgbLatest, sentinel2LayerRgbLatest],
+  [LayerType.Sentinel2NdviCloudless, sentinel2LayerNdviCloudless]
 ]);
 
 for (const [LayerType, layer] of sentinel2Layers) {
@@ -76,8 +85,9 @@ const baseMaps = {
 
 const overlayMaps = {
   "ESA Sentinel-2": {
-    "Latest cloudless": sentinel2Layers.get(LayerType.Sentinel2RgbCloudless),
-    "Latest": sentinel2Layers.get(LayerType.Sentinel2RgbLatest),
+    "Latest cloudless RGB": sentinel2Layers.get(LayerType.Sentinel2RgbCloudless),
+    "Latest RGB": sentinel2Layers.get(LayerType.Sentinel2RgbLatest),
+    "Latest cloudless NDVI": sentinel2Layers.get(LayerType.Sentinel2NdviCloudless),
     "Disable": L.layerGroup(),
   }
 };
