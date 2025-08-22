@@ -103,32 +103,10 @@ class Sentinel2DataLoader {
       this.#cellDates.set(pkg.key, currentCellDates);
 
       const warpedImage = new ImageData(pkg.tileSize.x, pkg.tileSize.y);
-      for (const stacItem of stacItems) {
-        if (controller.signal.aborted)
-        {
-          console.log("Abort after fetching stac item");
-          return;
-        }
 
-        const visualBand = stacItem.assets.visual.href;
+      await this.loadAndDrawTile(pkg, stacItems, warpedImage, controller.signal);
 
-        const epsgCode = stacItem.properties["proj:epsg"];
-        const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
-
-        const cellCoordsUtm = pkg.cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
-        const tiff = await this.openGeoTiffFile(visualBand);
-
-        if (controller.signal.aborted)
-        {
-          console.log("Abort after opening geotiff file");
-          return;
-        }
-
-        await this.getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, controller.signal);
-      }
-
-      if (controller.signal.aborted)
-      {
+      if (controller.signal.aborted) {
         console.log("Abort after getting cell RGB data");
         return;
       }
@@ -159,6 +137,30 @@ class Sentinel2DataLoader {
         cellRGB: null,
       });
     }   
+  }
+
+  async loadAndDrawTile(pkg, stacItems, warpedImage, signal) {
+    for (const stacItem of stacItems) {
+      if (signal.aborted) {
+        console.log("Abort after fetching stac item");
+        return;
+      }
+
+      const visualBand = stacItem.assets.visual.href;
+
+      const epsgCode = stacItem.properties["proj:epsg"];
+      const wgs84ToUTM = proj4("WGS84", `EPSG:${epsgCode}`);
+
+      const cellCoordsUtm = pkg.cellCoords.map(xy => wgs84ToUTM.forward([xy[0], xy[1]]));
+      const tiff = await this.openGeoTiffFile(visualBand);
+
+      if (signal.aborted) {
+        console.log("Abort after opening geotiff file");
+        return;
+      }
+
+      await this.getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, signal);
+    }
   }
  
   unloadTile(pkg) {
