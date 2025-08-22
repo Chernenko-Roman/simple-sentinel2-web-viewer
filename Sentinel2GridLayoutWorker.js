@@ -408,6 +408,7 @@ const layerDataLoaders = new Map([
   [LayerType.Sentinel2RgbCloudless, new Sentinel2RgbDataLoader(10, LayerType.Sentinel2RgbCloudless)],
   [LayerType.Sentinel2RgbLatest, new Sentinel2RgbDataLoader(100, LayerType.Sentinel2RgbLatest)],
   [LayerType.Sentinel2NdviCloudless, new Sentinel2NdviDataLoader(10, LayerType.Sentinel2NdviCloudless)],
+  [LayerType.Sentinel2NdviLatest, new Sentinel2NdviDataLoader(100, LayerType.Sentinel2NdviLatest)],
 ]);
 
 self.onmessage = (pkg) => {
