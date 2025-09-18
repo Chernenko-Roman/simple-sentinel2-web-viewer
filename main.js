@@ -227,3 +227,20 @@ info.onAdd = function(map) {
     return div;
 };
 info.addTo(map);
+
+// Elements
+const panel = document.getElementById('about-panel');
+const toggle = document.getElementById('about-toggle');
+const overlay = document.getElementById('overlay');
+
+// Toggle panel
+toggle.addEventListener('click', () => {
+  const isOpen = panel.classList.toggle('open');
+  overlay.classList.toggle('active', isOpen);
+});
+
+// Close when clicking outside
+overlay.addEventListener('click', () => {
+  panel.classList.remove('open');
+  overlay.classList.remove('active');
+});

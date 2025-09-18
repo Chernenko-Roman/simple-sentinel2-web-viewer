@@ -74,3 +74,55 @@ html, body {
   display: inline-block;
   vertical-align: middle;
 }
+
+/* Panel styles (slides from right) */
+#about-panel {
+  position: fixed;
+  top: 0;
+  right: -400px; /* hidden off-screen */
+  width: 280px;
+  height: 100%;
+  background: rgba(255,255,255,0.95);
+  box-shadow: -2px 0 5px rgba(0,0,0,0.3);
+  padding: 15px;
+  overflow-y: auto;
+  transition: right 0.3s ease;
+  z-index: 1001;
+}
+#about-panel.open {
+  right: 0; /* slide in */
+}
+
+#about-toggle {
+  position: fixed;
+  bottom: 60px;
+  right: 10px;
+  z-index: 1002;
+  background: rgba(255, 255, 255, 0.8); /* semi-transparent background */
+  border: 1px solid #ccc;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  opacity: 0.85;             /* overall transparency */
+  transition: opacity 0.2s;  /* smooth hover effect */
+}
+
+#about-toggle:hover {
+  opacity: 1; /* fully visible when hovered */
+}
+
+/* Overlay for outside-click */
+#overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.3);
+  z-index: 1000;
+}
+#overlay.active {
+  display: block;
+}
