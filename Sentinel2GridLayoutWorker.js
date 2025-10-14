@@ -200,7 +200,7 @@ class Sentinel2RgbDataLoader {
   async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
     const cellRGB = await withRetry(tiff.readRasters.bind(tiff))({
-      pool: this.tiffUnpackPool,
+      pool: tiffUnpackPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
@@ -315,7 +315,7 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
   async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
     const cellRed = await withRetry(tiff[0].readRasters.bind(tiff[0]))({
-      pool: this.tiffUnpackPool,
+      pool: tiffUnpackPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
@@ -323,7 +323,7 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
     });
 
     const cellNir = await withRetry(tiff[1].readRasters.bind(tiff[1]))({
-      pool: this.tiffUnpackPool,
+      pool: tiffUnpackPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
