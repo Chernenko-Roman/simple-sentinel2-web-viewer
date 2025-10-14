@@ -6,6 +6,7 @@ import STACCatalog from './STACCatalog.js';
 import { LayerType } from './LayerType.js';
 
 let mspcSasToken = null;
+let tiffUnpackPool = new Pool();
 
 async function updateMspcSasToken() {
   try {
@@ -61,7 +62,6 @@ class Sentinel2RgbDataLoader {
   #tiffCache = new Map();
   #stac = null;
   #abortControllers = new Map();
-  _tiffPool = new Pool();
   #cellRgbCache = new QuickLRU({ maxSize: 1000 });
   #cellDates = new Map();
   #visibleCellKeys = new Set();
@@ -200,7 +200,7 @@ class Sentinel2RgbDataLoader {
   async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
     const cellRGB = await withRetry(tiff.readRasters.bind(tiff))({
-      pool: this._tiffPool,
+      pool: this.tiffUnpackPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
@@ -315,7 +315,7 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
   async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
     const cellRed = await withRetry(tiff[0].readRasters.bind(tiff[0]))({
-      pool: this._tiffPool,
+      pool: this.tiffUnpackPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
@@ -323,7 +323,7 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
     });
 
     const cellNir = await withRetry(tiff[1].readRasters.bind(tiff[1]))({
-      pool: this._tiffPool,
+      pool: this.tiffUnpackPool,
       bbox: bbox,
       resX: (bbox[2] - bbox[0])/cellSize.x,
       resY: (bbox[3] - bbox[1])/cellSize.y,
