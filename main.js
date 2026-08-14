@@ -1,15 +1,34 @@
 import { LayerType, BackgroundType } from './LayerType.js';
 import { Sentinel2GridLayer } from './Sentinel2GridLayer.js';
 
+// Temporary fixed start location for reproducible before/after network comparisons —
+// bypasses the geo-IP lookup so every reload (without lat/lng in the URL) opens the
+// exact same place/zoom. Set to null to restore normal geo-IP-based behavior.
+// const DEBUG_FIXED_VIEW = { lat: 49.4, lng: 31.5, zoom: 13 }; // farmland, Cherkasy region, Ukraine
+const DEBUG_FIXED_VIEW = null;
+
 function getInitialView() {
   const params = new URLSearchParams(window.location.search);
+  const hasExplicitPosition = params.has('lat') && params.has('lng');
+
+  if (!hasExplicitPosition && DEBUG_FIXED_VIEW) {
+    return {
+      lat: DEBUG_FIXED_VIEW.lat,
+      lng: DEBUG_FIXED_VIEW.lng,
+      zoom: DEBUG_FIXED_VIEW.zoom,
+      background: params.get("background") || "openstreetmap",
+      overlay: params.get("overlay") || "Sentinel2RgbCloudless",
+      unknownPosition: false,
+    };
+  }
+
   return {
     lat: parseFloat(params.get('lat')) || 0,
     lng: parseFloat(params.get('lng')) || 0,
     zoom: parseInt(params.get('z')) || 2,
     background: params.get("background") || "openstreetmap",
     overlay: params.get("overlay") || "Sentinel2RgbCloudless",
-    unknownPosition: !params.has('lat') && !params.has('lng'),
+    unknownPosition: !hasExplicitPosition,
   };
 }
 

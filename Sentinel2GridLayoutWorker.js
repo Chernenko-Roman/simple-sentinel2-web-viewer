@@ -204,8 +204,8 @@ class Sentinel2RgbDataLoader {
       // worth of tiles fits comfortably is what actually avoids the duplicate fetches
       // (the per-image decode cache and read-queue below only help once bytes are
       // actually being reused instead of evicted).
-      blockSize: 1024 * 1024,
-      cacheSize: 256,
+      blockSize: 256 * 1024,
+      cacheSize: 512,
     }).then(result => {
       // fromUrl() doesn't forward a `cache` GeoTIFFOptions flag itself, so enable
       // geotiff.js's per-image decoded-tile cache directly on the resolved instance,
