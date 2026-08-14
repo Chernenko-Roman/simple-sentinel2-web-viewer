@@ -8,6 +8,13 @@ import { LayerType } from './LayerType.js';
 let mspcSasToken = null;
 let tiffUnpackPool = new Pool();
 
+// Resolves once the SAS token has been fetched at least once. Without this, a tile
+// request that arrives before the very first updateMspcSasToken() call finishes would
+// build a GeoTIFF asset URL with a literal "?null" token, which Azure Blob Storage
+// rejects (409) — a startup race that only shows up on some page loads.
+let resolveMspcSasTokenReady;
+const mspcSasTokenReady = new Promise(resolve => { resolveMspcSasTokenReady = resolve; });
+
 async function updateMspcSasToken() {
   try {
     const signResp = await fetch("https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a?write=false", {
@@ -17,6 +24,7 @@ async function updateMspcSasToken() {
 
     const result = await signResp.json();
     mspcSasToken = result.token;
+    resolveMspcSasTokenReady();
   } catch (error) {
     setTimeout(updateMspcSasToken, 1000);
     return;
@@ -55,6 +63,10 @@ function withRetry(fn, retries = 3, delay = 500) {
 
 class Sentinel2RgbDataLoader {
   #tiffCache = new Map();
+  // Resolved-overview-image cache: geoTiffUrl -> Map<zoom, Promise<{firstImage, usedImage}>>.
+  // Reusing the same GeoTIFFImage instance across grid cells is what lets geotiff.js's
+  // internal decoded-tile cache (GeoTIFFOptions.cache) actually pay off — see getOverviewImage.
+  #imageCache = new Map();
   #stac = null;
   #abortControllers = new Map();
   #cellRgbCache = new QuickLRU({ maxSize: 1000 });
@@ -149,7 +161,7 @@ class Sentinel2RgbDataLoader {
         return;
       }
 
-      await this.getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, signal);
+      await this.getCellRgbImage(tiff, visualBand, pkg.coords.z, warpedImage, cellCoordsUtm, pkg.tileSize, signal);
     }
   }
 
@@ -164,6 +176,8 @@ class Sentinel2RgbDataLoader {
   }
 
   async openGeoTiffFile(geoTiffUrl) {
+    await mspcSasTokenReady;
+
     if (this.#tiffCache.has(geoTiffUrl))
     {
       const cachedGeotiff = this.#tiffCache.get(geoTiffUrl);
@@ -172,12 +186,33 @@ class Sentinel2RgbDataLoader {
       else {
         cachedGeotiff.geotiff = null;
         this.#tiffCache.delete(geoTiffUrl);
+        // The cached GeoTIFFImage instances below were built on top of the old
+        // (now-invalid) source/token, so they can no longer be reused either.
+        this.#imageCache.delete(geoTiffUrl);
       }
     }
 
     const href = `${geoTiffUrl}?${mspcSasToken}`;
 
-    const tiff = withRetry(fromUrl)(href);
+    const tiff = withRetry(fromUrl)(href, {
+      // fromUrl()'s underlying BlockedSource caches fetched byte ranges in an LRU of
+      // `cacheSize` blocks of `blockSize` bytes — but defaults to 100 x 64KB = 6.4MB.
+      // A single visible viewport here needs dozens of ~500-650KB internal COG tiles
+      // (tens of MB total), so at the default size the cache evicts older blocks long
+      // before they can be reused, and every "overlapping" tile read across grid cells
+      // silently re-fetches from the network. Sizing both up so a typical viewport's
+      // worth of tiles fits comfortably is what actually avoids the duplicate fetches
+      // (the per-image decode cache and read-queue below only help once bytes are
+      // actually being reused instead of evicted).
+      blockSize: 1024 * 1024,
+      cacheSize: 256,
+    }).then(result => {
+      // fromUrl() doesn't forward a `cache` GeoTIFFOptions flag itself, so enable
+      // geotiff.js's per-image decoded-tile cache directly on the resolved instance,
+      // before anything calls getImage()/readRasters() on it.
+      result.cache = true;
+      return result;
+    });
     this.#tiffCache.set(geoTiffUrl, {
       geotiff: tiff,
       token: mspcSasToken} );
@@ -185,15 +220,106 @@ class Sentinel2RgbDataLoader {
     return tiff;
   }
 
-  async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
-    const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
-    const cellRGB = await withRetry(tiff.readRasters.bind(tiff))({
+  // Picks (and caches) the same overview-level GeoTIFFImage that GeoTIFF.readRasters()
+  // would normally pick fresh on every call for the given resolution — but resolved once
+  // per (geoTiffUrl, zoom) and reused, so its internal decoded-tile cache actually persists
+  // across every grid cell that reads from this asset at this zoom level.
+  async getOverviewImage(tiff, geoTiffUrl, z, resX, resY) {
+    if (!this.#imageCache.has(geoTiffUrl))
+      this.#imageCache.set(geoTiffUrl, new Map());
+
+    const perUrlCache = this.#imageCache.get(geoTiffUrl);
+    if (!perUrlCache.has(z))
+      perUrlCache.set(z, this.resolveOverviewImage(tiff, resX, resY));
+
+    return perUrlCache.get(z);
+  }
+
+  // Mirrors GeoTIFFBase.readRasters()'s own overview-selection logic (same public API:
+  // getImageCount/getImage/getBoundingBox/getWidth/getHeight), so picking a cached image
+  // here behaves the same as the resX/resY-driven selection the library would do inline.
+  async resolveOverviewImage(tiff, resX, resY) {
+    const firstImage = await tiff.getImage(0);
+    let usedImage = firstImage;
+
+    if (resX || resY) {
+      const imageCount = await tiff.getImageCount();
+      const imgBBox = firstImage.getBoundingBox();
+      const allImages = [];
+      for (let i = 0; i < imageCount; ++i) {
+        const image = await tiff.getImage(i);
+        const subfileType = image.fileDirectory.getValue('SubfileType');
+        const newSubfileType = image.fileDirectory.getValue('NewSubfileType');
+        if (i === 0 || subfileType === 2 || (newSubfileType || 0) & 1)
+          allImages.push(image);
+      }
+      allImages.sort((a, b) => a.getWidth() - b.getWidth());
+
+      for (let i = 0; i < allImages.length; ++i) {
+        const image = allImages[i];
+        const imgResX = (imgBBox[2] - imgBBox[0]) / image.getWidth();
+        const imgResY = (imgBBox[3] - imgBBox[1]) / image.getHeight();
+        usedImage = image;
+        if ((resX && resX > imgResX) || (resY && resY > imgResY))
+          break;
+      }
+    }
+
+    // `readQueue` serializes reads against this specific image (see readOverviewWindow):
+    // geotiff.js's per-tile decode cache checks "is this tile already cached?" and "start
+    // fetching it" as two separate steps, which aren't safe against concurrent callers —
+    // when Leaflet fires off many grid cells' reads in the same burst, several of them can
+    // check the cache before any of them has finished populating it, so they all redundantly
+    // re-fetch the same underlying bytes. Running reads on this image one at a time means a
+    // later read always sees whatever the earlier ones already decoded, instead of racing them.
+    return { firstImage, usedImage, readQueue: Promise.resolve() };
+  }
+
+  // Runs `usedImage.readRasters(...)` for the given window, queued behind any other read
+  // already pending on this same overview image (see resolveOverviewImage for why).
+  readOverviewWindow(overview, window, signal) {
+    const task = () => withRetry(overview.usedImage.readRasters.bind(overview.usedImage))({
       pool: tiffUnpackPool,
-      bbox: bbox,
-      resX: (bbox[2] - bbox[0])/cellSize.x,
-      resY: (bbox[3] - bbox[1])/cellSize.y,
+      window: window,
       signal: signal,
     });
+
+    // Chain behind the current tail regardless of whether it succeeded or failed/aborted,
+    // so one slow/failed read doesn't block everything queued after it. The tail itself is
+    // kept always-resolving for the same reason; callers still get their own read's real
+    // outcome (including rejections) via `result`.
+    const result = overview.readQueue.catch(() => {}).then(task);
+    overview.readQueue = result.catch(() => {});
+    return result;
+  }
+
+  // Same bbox (geo coords) -> pixel window conversion GeoTIFFBase.readRasters() does inline.
+  bboxToWindow(bbox, firstImage, usedImage) {
+    const [oX, oY] = firstImage.getOrigin();
+    const [imageResX, imageResY] = usedImage.getResolution(firstImage);
+    const wnd = [
+      Math.round((bbox[0] - oX) / imageResX),
+      Math.round((bbox[1] - oY) / imageResY),
+      Math.round((bbox[2] - oX) / imageResX),
+      Math.round((bbox[3] - oY) / imageResY),
+    ];
+    return [
+      Math.min(wnd[0], wnd[2]),
+      Math.min(wnd[1], wnd[3]),
+      Math.max(wnd[0], wnd[2]),
+      Math.max(wnd[1], wnd[3]),
+    ];
+  }
+
+  async getCellRgbImage(tiff, geoTiffUrl, z, warpedImage, cellCoordsUtm, cellSize, signal) {
+    const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
+    const resX = (bbox[2] - bbox[0]) / cellSize.x;
+    const resY = (bbox[3] - bbox[1]) / cellSize.y;
+
+    const overview = await this.getOverviewImage(tiff, geoTiffUrl, z, resX, resY);
+    const window = this.bboxToWindow(bbox, overview.firstImage, overview.usedImage);
+
+    const cellRGB = await this.readOverviewWindow(overview, window, signal);
 
     await this.warpCellImage(cellRGB, warpedImage, cellCoordsUtm, bbox, cellSize);
   }
@@ -293,27 +419,26 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
         return;
       }
 
-      await this.getCellRgbImage([redTiff, nirTiff], warpedImage, cellCoordsUtm, pkg.tileSize, signal);
+      await this.getCellRgbImage(
+        [{ tiff: redTiff, url: redBand }, { tiff: nirTiff, url: nirBand }],
+        pkg.coords.z, warpedImage, cellCoordsUtm, pkg.tileSize, signal);
     }
   }
 
-  async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
+  async getCellRgbImage(bands, z, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
-    const cellRed = await withRetry(tiff[0].readRasters.bind(tiff[0]))({
-      pool: tiffUnpackPool,
-      bbox: bbox,
-      resX: (bbox[2] - bbox[0])/cellSize.x,
-      resY: (bbox[3] - bbox[1])/cellSize.y,
-      signal: signal,
-    });
+    const resX = (bbox[2] - bbox[0]) / cellSize.x;
+    const resY = (bbox[3] - bbox[1]) / cellSize.y;
 
-    const cellNir = await withRetry(tiff[1].readRasters.bind(tiff[1]))({
-      pool: tiffUnpackPool,
-      bbox: bbox,
-      resX: (bbox[2] - bbox[0])/cellSize.x,
-      resY: (bbox[3] - bbox[1])/cellSize.y,
-      signal: signal,
-    });
+    const [red, nir] = bands;
+    const redOverview = await this.getOverviewImage(red.tiff, red.url, z, resX, resY);
+    const nirOverview = await this.getOverviewImage(nir.tiff, nir.url, z, resX, resY);
+
+    const redWindow = this.bboxToWindow(bbox, redOverview.firstImage, redOverview.usedImage);
+    const nirWindow = this.bboxToWindow(bbox, nirOverview.firstImage, nirOverview.usedImage);
+
+    const cellRed = await this.readOverviewWindow(redOverview, redWindow, signal);
+    const cellNir = await this.readOverviewWindow(nirOverview, nirWindow, signal);
 
     const cellRGB = this.calculateNdvi(cellRed, cellNir);
     await this.warpCellImage(cellRGB, warpedImage, cellCoordsUtm, bbox, cellSize);
