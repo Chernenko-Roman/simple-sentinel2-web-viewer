@@ -22,8 +22,7 @@ async function updateMspcSasToken() {
     return;
   }
 
-  console.log("MSPC SAS token refreshed");
-  setTimeout(updateMspcSasToken, 45 * 60 * 1000); 
+  setTimeout(updateMspcSasToken, 45 * 60 * 1000);
 }
 
 (async () => {
@@ -39,24 +38,20 @@ function withRetry(fn, retries = 3, delay = 500) {
         return await fn(...args);
       } catch (err) {
         if (err.name === 'AbortError') {
-          console.log("AbortError")
           throw err;
         }
 
         lastError = err;
         attempt++;
         if (attempt < retries) {
-          console.log(`withRetry retry ${err.name} ${attempt} ${retries}`);
           await new Promise(r => setTimeout(r, delay));
           delay *= 2; // optional exponential backoff
         }
       }
     }
-    console.log(`withRetry failed ${lastError.name}`);
     throw lastError;
   };
 }
-
 
 class Sentinel2RgbDataLoader {
   #tiffCache = new Map();
@@ -66,8 +61,6 @@ class Sentinel2RgbDataLoader {
   #cellDates = new Map();
   #visibleCellKeys = new Set();
   #layerType = null;
-
-  
 
   constructor(maxCloudCoverage, layerType) {
     this.#stac = new STACCatalog(maxCloudCoverage)
@@ -84,7 +77,7 @@ class Sentinel2RgbDataLoader {
         key: pkg.key,
         cellRGB: await createImageBitmap(this.#cellRgbCache.get(pkg.key)),
       });
-      
+
       return;
     }
     const controller = new AbortController();
@@ -107,7 +100,6 @@ class Sentinel2RgbDataLoader {
       await this.loadAndDrawTile(pkg, stacItems, warpedImage, controller.signal);
 
       if (controller.signal.aborted) {
-        console.log("Abort after getting cell RGB data");
         return;
       }
 
@@ -136,13 +128,12 @@ class Sentinel2RgbDataLoader {
         error: error,
         cellRGB: null,
       });
-    }   
+    }
   }
 
   async loadAndDrawTile(pkg, stacItems, warpedImage, signal) {
     for (const stacItem of stacItems) {
       if (signal.aborted) {
-        console.log("Abort after fetching stac item");
         return;
       }
 
@@ -155,14 +146,13 @@ class Sentinel2RgbDataLoader {
       const tiff = await this.openGeoTiffFile(visualBand);
 
       if (signal.aborted) {
-        console.log("Abort after opening geotiff file");
         return;
       }
 
       await this.getCellRgbImage(tiff, warpedImage, cellCoordsUtm, pkg.tileSize, signal);
     }
   }
- 
+
   unloadTile(pkg) {
     this.#visibleCellKeys.delete(pkg.key);
 
@@ -170,7 +160,6 @@ class Sentinel2RgbDataLoader {
     if (controller) {
       controller.abort();
       this.#abortControllers.delete(pkg.key);
-      console.log(`Tile ${pkg.key} aborted and unloaded.`);
     }
   }
 
@@ -186,12 +175,11 @@ class Sentinel2RgbDataLoader {
       }
     }
 
-    console.log("Raw asset href:", geoTiffUrl);
     const href = `${geoTiffUrl}?${mspcSasToken}`;
-    
+
     const tiff = withRetry(fromUrl)(href);
     this.#tiffCache.set(geoTiffUrl, {
-      geotiff: tiff, 
+      geotiff: tiff,
       token: mspcSasToken} );
 
     return tiff;
@@ -238,7 +226,7 @@ class Sentinel2RgbDataLoader {
           const x1 = x / cellSize.x, y1 = y / cellSize.y;
 
           let x0 = A[0] + x1*AB[0] + y1*AD[0] + x1*y1*BCsubAD[0];
-          let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*BCsubAD[0];
+          let y0 = A[1] + x1*AB[1] + y1*AD[1] + x1*y1*BCsubAD[1];
 
           x0 = Math.round(x0);
           x0 = Math.min(Math.max(x0, 0), origCellImage.width - 1);
@@ -246,7 +234,7 @@ class Sentinel2RgbDataLoader {
           y0 = Math.min(Math.max(y0, 0), origCellImage.height - 1);
 
           const srcOffset = y0*origCellImage.width + x0;
-          
+
           if (origCellImage[0][srcOffset] > 0 || origCellImage[1][srcOffset] > 0 || origCellImage[2][srcOffset] > 0) {
             warpedData[dstOffset] = origCellImage[0][srcOffset];
             warpedData[dstOffset + 1] = origCellImage[1][srcOffset];
@@ -284,7 +272,6 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
   async loadAndDrawTile(pkg, stacItems, warpedImage, signal) {
     for (const stacItem of stacItems) {
       if (signal.aborted) {
-        console.log("Abort after fetching stac item");
         return;
       }
 
@@ -298,20 +285,18 @@ class Sentinel2NdviDataLoader extends Sentinel2RgbDataLoader {
 
       const redTiff = await this.openGeoTiffFile(redBand);
       if (signal.aborted) {
-        console.log("Abort after opening red band geotiff file");
         return;
       }
 
       const nirTiff = await this.openGeoTiffFile(nirBand);
       if (signal.aborted) {
-        console.log("Abort after opening nir band geotiff file");
         return;
       }
 
       await this.getCellRgbImage([redTiff, nirTiff], warpedImage, cellCoordsUtm, pkg.tileSize, signal);
     }
   }
-  
+
   async getCellRgbImage(tiff, warpedImage, cellCoordsUtm, cellSize, signal) {
     const bbox = turf.bbox(turf.lineString(cellCoordsUtm) );
     const cellRed = await withRetry(tiff[0].readRasters.bind(tiff[0]))({
@@ -414,7 +399,7 @@ const layerDataLoaders = new Map([
 self.onmessage = (pkg) => {
   if (!layerDataLoaders.has(pkg.data.layerType))
   {
-    console.log(`Unknown layerType=${pkg.data.layerType} in pkg`);
+    console.warn(`Unknown layerType=${pkg.data.layerType} in pkg`);
     return;
   }
   const dataLoader = layerDataLoaders.get(pkg.data.layerType);
@@ -430,4 +415,3 @@ self.onmessage = (pkg) => {
       break;
   }
 };
-

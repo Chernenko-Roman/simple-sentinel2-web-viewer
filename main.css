@@ -66,15 +66,6 @@ html, body {
   animation: loadingLoop 1.5s infinite;
 }
 
-.layer-info-control {
-  background: none;
-  padding-left: 10px;
-  color: #333;
-  font-size: 11px;
-  display: inline-block;
-  vertical-align: middle;
-}
-
 /* Panel styles (slides from right) */
 #about-panel {
   position: fixed;

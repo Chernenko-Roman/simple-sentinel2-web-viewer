@@ -10,15 +10,10 @@ export class Sentinel2GridLayer extends L.GridLayer {
     this._layerId = layerType;
 
     this.#worker.addEventListener("message", (pkg) => this.handleWorkerMessage(pkg.data));
-    this.on('tileunload', e => {
-      console.log('Tile unloaded:', e.coords);
-      this.unloadTile(e.coords);
-    });
+    this.on('tileunload', e => this.unloadTile(e.coords));
   }
 
   createTile(coords, done) {
-    console.log(`Start loading x = ${coords.x} y = ${coords.y} z = ${coords.z}`);
-
     const key = `${coords.z}/${coords.x}/${coords.y}`;
 
     const tile = document.createElement("canvas");
@@ -103,10 +98,9 @@ export class Sentinel2GridLayer extends L.GridLayer {
         let imagesDatesStr = "";
         if (imagesDates.length <= 3)
           imagesDatesStr = imagesDates.join(", ");
-        else 
+        else
           imagesDatesStr = `${imagesDates.at(-1)} – ${imagesDates[0]}`;
 
-        console.log(imagesDatesStr);
         this.fire("imagesDatesUpdated", {"dates": imagesDatesStr});
       }
     }

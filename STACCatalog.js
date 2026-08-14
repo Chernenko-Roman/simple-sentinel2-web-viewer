@@ -20,12 +20,6 @@ export default class STACCatalog {
       [stacItems, bboxIntersectionRatio] = this.findBestItem(topLeft, bottomRight);
     }
 
-    if (bboxIntersectionRatio < bboxCoverageThr)
-    {
-      console.log(`Cell coverage ratio ${bboxIntersectionRatio} with ${stacItems.length} items`);
-      this.findBestItem(topLeft, bottomRight);  
-    }
-
     if (bboxIntersectionRatio > 0.01)
       return [stacItems, bboxIntersectionRatio >= bboxCoverageThr];
     else
@@ -34,7 +28,7 @@ export default class STACCatalog {
 
   async updateCachedItems(topLeft, bottomRight, disableBatching = false) {
     const stacItems = await this.fetchLatestS2StacItems(topLeft, bottomRight, disableBatching);
-    
+
     for (let i = 0; i < stacItems.length; i++)
     {
       const id = stacItems[i].id;
@@ -143,7 +137,6 @@ export default class STACCatalog {
         },
       },
       limit: maxItems,
-      // sortby: "-properties.datetime",
       sortby: [{ field: 'datetime', direction: 'desc' }],
     };
 

@@ -39,7 +39,7 @@ const sentinel2LayerRgbCloudless = new Sentinel2GridLayer({
   maxZoom: 16,
   minNativeZoom: 8,
   maxNativeZoom: 14,
-  attribution: "ESA Sentinel-2"}, 
+  attribution: "ESA Sentinel-2"},
   worker, LayerType.Sentinel2RgbCloudless);
 
 const sentinel2LayerRgbLatest = new Sentinel2GridLayer({
@@ -47,7 +47,7 @@ const sentinel2LayerRgbLatest = new Sentinel2GridLayer({
   maxZoom: 16,
   minNativeZoom: 8,
   maxNativeZoom: 14,
-  attribution: "ESA Sentinel-2"}, 
+  attribution: "ESA Sentinel-2"},
   worker, LayerType.Sentinel2RgbLatest);
 
 const sentinel2LayerNdviCloudless = new Sentinel2GridLayer({
@@ -55,7 +55,7 @@ const sentinel2LayerNdviCloudless = new Sentinel2GridLayer({
   maxZoom: 16,
   minNativeZoom: 8,
   maxNativeZoom: 14,
-  attribution: "ESA Sentinel-2"}, 
+  attribution: "ESA Sentinel-2"},
   worker, LayerType.Sentinel2NdviCloudless);
 
 const sentinel2LayerNdviLatest = new Sentinel2GridLayer({
@@ -63,7 +63,7 @@ const sentinel2LayerNdviLatest = new Sentinel2GridLayer({
   maxZoom: 16,
   minNativeZoom: 8,
   maxNativeZoom: 14,
-  attribution: "ESA Sentinel-2"}, 
+  attribution: "ESA Sentinel-2"},
   worker, LayerType.Sentinel2NdviLatest);
 
 const sentinel2Layers = new Map([
@@ -73,7 +73,7 @@ const sentinel2Layers = new Map([
   [LayerType.Sentinel2NdviLatest, sentinel2LayerNdviLatest],
 ]);
 
-for (const [LayerType, layer] of sentinel2Layers) {
+for (const [layerType, layer] of sentinel2Layers) {
   layer.on('tileloadstart', () => ProgressBar.tileRequested());
   layer.on('tileload', () => ProgressBar.tileLoaded());
   layer.on('tileerror', () => ProgressBar.tileLoaded());
@@ -115,7 +115,7 @@ if (view.unknownPosition) {
    fetch('/geo')
     .then(response => response.json())
     .then(data => {
-        map.setView([data.latitude, data.longitude], 12); 
+        map.setView([data.latitude, data.longitude], 12);
     })
     .catch(err => console.error('Failed to fetch geo:', err));
 }
@@ -139,7 +139,7 @@ L.control.scale().addTo(map);
 
 function onZoomChanged() {
   const zoominMsgDiv = document.getElementById('zoomin_msg');
-  
+
   const currentZoom = map.getZoom();
   if (currentZoom <= 7) {
     zoominMsgDiv.className = "zoomin_msg_enable";
