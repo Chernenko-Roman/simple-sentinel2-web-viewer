@@ -17,10 +17,13 @@ const mspcSasTokenReady = new Promise(resolve => { resolveMspcSasTokenReady = re
 
 async function updateMspcSasToken() {
   try {
-    const signResp = await fetch("https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a?write=false", {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
+    // No custom headers here: a GET with an explicit Content-Type is a
+    // non-simple CORS request and requires a preflight OPTIONS, which
+    // Planetary Computer's API currently fails (405, no CORS headers) —
+    // see the same issue on the STAC search fetch in STACCatalog.js. A
+    // plain GET has no body, needs no Content-Type, and skips the
+    // preflight entirely.
+    const signResp = await fetch("https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a?write=false");
 
     const result = await signResp.json();
     mspcSasToken = result.token;

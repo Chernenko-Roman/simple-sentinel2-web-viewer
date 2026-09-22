@@ -128,26 +128,30 @@ export default class STACCatalog {
   async fetchLatestS2StacItemsInternal(topLeft, bottomRight) {
     const squareDegrees = Math.abs(topLeft.lat - bottomRight.lat) * Math.abs(topLeft.lng - bottomRight.lng);
     const maxItems = Math.max(10, Math.min(100, Math.round(squareDegrees*20) ) );
-    const body = {
-      collections: ["sentinel-2-l2a"],
-      bbox: [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat],
-      query: {
+
+    // Sent as a GET with query-string params rather than a POST with a JSON
+    // body: a POST + "Content-Type: application/json" is a non-simple CORS
+    // request, which triggers a preflight OPTIONS request. Planetary
+    // Computer's search endpoint currently fails that preflight (405, no
+    // CORS headers), which breaks the fetch in the browser even though the
+    // actual GET/POST responses carry proper CORS headers. A GET request
+    // with no custom headers is a "simple" CORS request and skips the
+    // preflight entirely, sidestepping that issue.
+    const params = new URLSearchParams({
+      collections: "sentinel-2-l2a",
+      bbox: [topLeft.lng, bottomRight.lat, bottomRight.lng, topLeft.lat].join(","),
+      query: JSON.stringify({
         "eo:cloud_cover": {
           lte: this.#maxCloudCoverage,
         },
-      },
+      }),
       limit: maxItems,
-      sortby: [{ field: 'datetime', direction: 'desc' }],
-    };
+      sortby: "-datetime",
+    });
 
     const res = await fetch(
       // "https://earth-search.aws.element84.com/v1/search",
-      "https://planetarycomputer.microsoft.com/api/stac/v1/search",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
+      "https://planetarycomputer.microsoft.com/api/stac/v1/search?" + params.toString()
     );
 
     if (!res.ok) throw new Error("STAC query failed: " + res.status);
